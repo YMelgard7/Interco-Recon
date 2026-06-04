@@ -3,347 +3,518 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Intercompany Recon — Evolve2Impact</title>
+<title>Interco Recon — Evolve2Impact</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f3;color:#111;min-height:100vh}
-.app{max-width:1100px;margin:0 auto;padding:1.5rem 1rem}
-button,select,input{font-family:inherit}
-.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:0.5px solid #ccc;background:#fff;color:#111;cursor:pointer}
+.app{max-width:1140px;margin:0 auto;padding:1.5rem 1rem}
+button,select,input,textarea{font-family:inherit}
+.btn{font-size:12px;padding:5px 11px;border-radius:7px;border:0.5px solid #d4d4d4;background:#fff;color:#111;cursor:pointer}
 .btn:hover{background:#f5f5f3}
-.btn-dark{font-size:13px;padding:7px 16px;border-radius:8px;border:none;background:#111;color:#fff;cursor:pointer;font-weight:500}
-.btn-dark:hover{background:#333}
-.btn-danger{font-size:12px;padding:5px 10px;border-radius:8px;border:0.5px solid #fca5a5;background:#fef2f2;color:#dc2626;cursor:pointer}
-.card{background:#fff;border:0.5px solid #e5e5e5;border-radius:12px;overflow:hidden;margin-bottom:1rem}
-.card-head{padding:11px 16px;border-bottom:0.5px solid #e5e5e5;background:#fafafa;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.btn-dark{font-size:12px;padding:6px 14px;border-radius:7px;border:none;background:#111;color:#fff;cursor:pointer;font-weight:500}
+.btn-sm{font-size:11px;padding:3px 8px;border-radius:5px;border:0.5px solid #d4d4d4;background:#fff;color:#111;cursor:pointer}
+.card{background:#fff;border:0.5px solid #e5e5e5;border-radius:12px;overflow:hidden;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card-head{padding:10px 16px;border-bottom:0.5px solid #e5e5e5;background:#fafafa;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .card-title{font-size:13px;font-weight:500}
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:1rem}
-.metric{background:#fafafa;border-radius:8px;padding:10px 12px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:1rem}
+.metric{background:#fff;border:0.5px solid #e5e5e5;border-radius:10px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .metric-label{font-size:11px;color:#666;margin-bottom:3px}
-.metric-val{font-size:19px;font-weight:500}
+.metric-val{font-size:18px;font-weight:500}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:7px 10px;font-size:11px;font-weight:500;color:#666;border-bottom:0.5px solid #e5e5e5;white-space:nowrap;background:#fafafa;position:sticky;top:0}
+th{text-align:left;padding:7px 10px;font-size:11px;font-weight:500;color:#666;border-bottom:0.5px solid #e5e5e5;white-space:nowrap;background:#fafafa;position:sticky;top:0;z-index:1}
 td{padding:7px 10px;border-bottom:0.5px solid #f0f0f0;vertical-align:middle}
 tr.clickable{cursor:pointer}
 tr.clickable:hover td{background:#fafafa}
-tr.active td{background:#f5f5f3}
-.badge-ok{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:100px;font-weight:500;background:#dcfce7;color:#16a34a}
-.badge-warn{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:100px;font-weight:500;background:#fef2f2;color:#dc2626}
-.badge-ap{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:100px;font-weight:500;background:#eff6ff;color:#2563eb}
-.pill{font-size:11px;padding:2px 7px;border-radius:100px;border:0.5px solid #e5e5e5;color:#666;background:#fafafa;white-space:nowrap}
-.tabs{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
-.tab{font-size:12px;padding:5px 13px;border-radius:8px;border:0.5px solid #ccc;background:#fff;color:#111;cursor:pointer}
-.tab.active{background:#111;color:#fff;border-color:#111;font-weight:500}
-select{font-size:12px;padding:5px 9px;border-radius:8px;border:0.5px solid #ccc;background:#fff;color:#111}
-input[type=text],input[type=search]{font-size:12px;padding:5px 9px;border-radius:8px;border:0.5px solid #ccc;background:#fff;color:#111}
-.filters{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+tr.selected td{background:#f5f5f3!important}
 .num{text-align:right;font-variant-numeric:tabular-nums}
-.ok{color:#16a34a}.warn{color:#dc2626}.info{color:#2563eb}.muted{color:#666}
+.ok{color:#16a34a}.warn{color:#dc2626}.info{color:#2563eb}.amber{color:#d97706}.purple{color:#7c3aed}.muted{color:#888}
 .scroll-x{overflow-x:auto}
-.scroll-y{overflow-y:auto;max-height:340px}
-.loading{padding:3rem;text-align:center;color:#666;font-size:13px}
-.spin{display:inline-block;width:18px;height:18px;border:2px solid #e5e5e5;border-top-color:#111;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+.scroll-y{overflow-y:auto;max-height:360px}
+.tabs{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
+.tab{font-size:12px;padding:5px 13px;border-radius:8px;border:0.5px solid #d4d4d4;background:#fff;color:#555;cursor:pointer;transition:all .12s}
+.tab:hover{background:#f5f5f3;color:#111}
+.tab.active{background:#111;color:#fff;border-color:#111;font-weight:500}
+select,input[type=text],input[type=search]{font-size:12px;padding:5px 9px;border-radius:7px;border:0.5px solid #d4d4d4;background:#fff;color:#111}
+textarea{font-size:12px;padding:7px 9px;border-radius:7px;border:0.5px solid #d4d4d4;background:#fff;color:#111;resize:vertical;min-height:56px;width:100%}
+.filters{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.pill{font-size:11px;padding:2px 7px;border-radius:100px;border:0.5px solid #e5e5e5;color:#666;background:#fafafa;white-space:nowrap;display:inline-block}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #e5e5e5;border-top-color:#111;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.empty{padding:2rem;text-align:center;color:#999;font-size:12px}
-.progress-bar{height:4px;background:#e5e5e5;border-radius:4px;overflow:hidden;margin-top:12px}
-.progress-fill{height:100%;background:#111;border-radius:4px;transition:width .3s}
-
-/* Upload screen */
-.upload-wrap{max-width:520px;margin:4rem auto;padding:0 1rem}
-.drop-zone{border:2px dashed #ccc;border-radius:12px;padding:2.5rem 2rem;text-align:center;cursor:pointer;transition:all .15s}
+.loading{padding:3rem;text-align:center;color:#666;font-size:13px}
+.empty{padding:1.5rem;text-align:center;color:#999;font-size:12px}
+.drop-zone{border:2px dashed #d4d4d4;border-radius:12px;padding:2.5rem 2rem;text-align:center;cursor:pointer;transition:all .15s;background:#fff}
 .drop-zone:hover,.drop-zone.drag{border-color:#111;background:#f5f5f3}
-.drop-zone.uploading{cursor:default;pointer-events:none}
-
-/* header */
+.upload-wrap{max-width:520px;margin:3.5rem auto;padding:0 1rem}
+.progress-bar{height:4px;background:#e5e5e5;border-radius:4px;overflow:hidden;margin-top:10px}
+.progress-fill{height:100%;background:#111;border-radius:4px;transition:width .25s}
+.hub-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+@media(max-width:640px){.hub-row{grid-template-columns:1fr}}
+.flow-arrow{display:flex;align-items:center;justify-content:center;color:#999;font-size:18px;padding:0 4px}
+.tag-badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid transparent;cursor:pointer;white-space:nowrap}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center;padding:1rem}
+.modal{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+.modal-title{font-size:15px;font-weight:500;margin-bottom:14px}
+.form-row{margin-bottom:12px}
+.form-label{font-size:11px;color:#666;margin-bottom:4px;display:block}
 .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px}
-.header-title{font-size:18px;font-weight:500;margin-bottom:2px}
-.header-sub{font-size:12px;color:#666}
 </style>
 </head>
 <body>
-<div class="app" id="app"><div class="loading"><span class="spin"></span>Loading…</div></div>
+<div id="root"></div>
 
 <script>
-const SUPA_URL = 'https://zwinmrqclkefpsfedwgg.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aW5tcnFjbGtlZnBzZmVkd2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MjY5MzUsImV4cCI6MjA5NjEwMjkzNX0.1uQY3ypn9223gDAWodnqmW82gfNBFo-whBhl4GMU5Dw';
-const H = {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
+const SUPA_URL='https://zwinmrqclkefpsfedwgg.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aW5tcnFjbGtlZnBzZmVkd2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MjY5MzUsImV4cCI6MjA5NjEwMjkzNX0.1uQY3ypn9223gDAWodnqmW82gfNBFo-whBhl4GMU5Dw';
+const H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 
-async function sbGet(table, params=''){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`,{headers:H});
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbPost(table, body){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(body)});
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbDelete(table, params){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`,{method:'DELETE',headers:H});
-  if(!r.ok) throw new Error(await r.text());
-}
-
-const fmt = v => '$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtD = v => {
-  if(Math.abs(v)<0.02) return '<span class="ok">—</span>';
-  return `<span class="warn">${v>0?'+':'-'}${fmt(v)}</span>`;
-};
-const isAR = r => r.relationship && (r.relationship.includes('A/R') || r.relationship.toLowerCase().includes('due from'));
-const PORD = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const sortP = (a,b)=>{ const [am,ay]=a.split(' '),[bm,by]=b.split(' '); return ay!==by?Number(ay)-Number(by):PORD.indexOf(am)-PORD.indexOf(bm); };
-const esc = s => String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-// ── STATE ──────────────────────────────────────────────────────────────────
-let S = {
-  screen: 'loading', // loading | upload | dashboard
-  uploads: [],
-  currentUpload: null,
-  rows: [],
-  pairs: [],
-  periods: [],
-  view: 'summary',
-  statusFilter: 'all',
-  search: '',
-  selectedPair: null,
-  txPeriod: '', txDesc: '', txSide: '',
-  uploadStatus: null, // null | parsing | saving | done | error
-  uploadMsg: '',
-  uploadProgress: 0,
+const api={
+  get:async(t,p='')=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json()},
+  post:async(t,b)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json()},
+  patch:async(t,p,b)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json()},
+  del:async(t,p)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text())}
 };
 
+const fmt=v=>'$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtD=v=>{if(Math.abs(v)<0.02)return '<span class="ok">—</span>';return`<span class="warn">${v>0?'+':'-'}${fmt(v)}</span>`;};
+const isAR=r=>r.relationship&&(r.relationship.includes('A/R')||r.relationship.toLowerCase().includes('due from'));
+const PORD=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const sortP=(a,b)=>{const[am,ay]=a.split(' '),[bm,by]=b.split(' ');return ay!==by?Number(ay)-Number(by):PORD.indexOf(am)-PORD.indexOf(bm);};
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+const TAG_DEFS=[
+  {tag:'Reviewed — no issues', bg:'#dcfce7',color:'#16a34a'},
+  {tag:'Cleared for payment',  bg:'#dbeafe',color:'#2563eb'},
+  {tag:'Needs investigation',  bg:'#fef3c7',color:'#d97706'},
+  {tag:'On hold',              bg:'#ede9fe',color:'#7c3aed'},
+];
+function tagStyle(tag){const d=TAG_DEFS.find(t=>t.tag===tag);return d?`background:${d.bg};color:${d.color};border-color:${d.color}30`:'background:#f3f4f6;color:#374151;border-color:#d1d5db';}
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+const ST={
+  screen:'loading',
+  uploads:[],current:null,rows:[],pairs:[],periods:[],
+  pairTags:{},txTags:{}, // pair_key->tag obj, tx_id->tag
+  tagsConfig:[],
+  view:'hub', // hub | summary | monthly | payments
+  statusFilter:'all',search:'',
+  selectedPair:null,txPeriod:'',txDesc:'',txSide:'',txTagFilter:'',
+  modal:null, // {type:'pair'|'tx', target, existing}
+  uploadStatus:null,uploadMsg:'',uploadProgress:0,
+  tagger:'',
+};
+
+// ── AGGREGATE ─────────────────────────────────────────────────────────────
 function aggregate(rows){
-  const map = {};
-  rows.forEach(r => {
-    const pair = r.pair_key||''; if(!pair) return;
-    if(!map[pair]) map[pair]={pair,arByP:{},apByP:{},cur:new Set(),desc:new Set(),per:new Set(),txs:[],who:new Set()};
-    const p=map[pair];
-    const amt=parseFloat(r.amount)||0;
-    p.cur.add(r.currency||''); p.desc.add(r.description||''); p.per.add(r.period||'');
-    if(r.who_owes_who) p.who.add(r.who_owes_who);
-    if(isAR(r)) p.arByP[r.period]=(p.arByP[r.period]||0)+amt;
-    else        p.apByP[r.period]=(p.apByP[r.period]||0)+amt;
-    p.txs.push({sub:r.sub_name,rel:r.relationship,amt,desc:r.description,per:r.period,cur:r.currency,who:r.who_owes_who,doc:r.doc_number,memo:(r.memo||'').slice(0,80),isAR:isAR(r)});
+  const map={};
+  rows.forEach(r=>{
+    const pair=r.pair_key||'';if(!pair)return;
+    if(!map[pair])map[pair]={pair,arByP:{},apByP:{},cur:new Set(),desc:new Set(),per:new Set(),txs:[],who:new Set()};
+    const p=map[pair],amt=parseFloat(r.amount)||0;
+    p.cur.add(r.currency||'');p.desc.add(r.description||'');p.per.add(r.period||'');
+    if(r.who_owes_who)p.who.add(r.who_owes_who);
+    if(isAR(r))p.arByP[r.period]=(p.arByP[r.period]||0)+amt;
+    else       p.apByP[r.period]=(p.apByP[r.period]||0)+amt;
+    p.txs.push({id:r.id,sub:r.sub_name,rel:r.relationship,amt,desc:r.description,per:r.period,
+      cur:r.currency,who:r.who_owes_who,doc:r.doc_number,memo:(r.memo||'').slice(0,80),
+      isAR:isAR(r),tag:r.tag,tag_note:r.tag_note,tagged_by:r.tagged_by});
   });
-  S.pairs = Object.values(map).map(p=>{
+  ST.pairs=Object.values(map).map(p=>{
     const arT=Object.values(p.arByP).reduce((s,v)=>s+v,0);
     const apT=Object.values(p.apByP).reduce((s,v)=>s+v,0);
     const diff=arT-apT;
-    return {pair:p.pair,arT,apT,diff,balanced:Math.abs(diff)<0.02,
+    return{pair:p.pair,arT,apT,diff,balanced:Math.abs(diff)<0.02,
       cur:[...p.cur].filter(Boolean).sort(),desc:[...p.desc].filter(Boolean).sort(),
       per:[...p.per].filter(Boolean).sort(sortP),txs:p.txs,
       who:[...new Set([...p.who])],arByP:p.arByP,apByP:p.apByP};
   }).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
-  S.periods=[...new Set(rows.map(r=>r.period||'').filter(Boolean))].sort(sortP);
+  ST.periods=[...new Set(rows.map(r=>r.period||'').filter(Boolean))].sort(sortP);
 }
 
-function filtered(){ return S.pairs.filter(p=>{
-  if(S.statusFilter==='unbalanced'&&p.balanced) return false;
-  if(S.statusFilter==='balanced'&&!p.balanced) return false;
-  if(S.search&&!p.pair.toLowerCase().includes(S.search.toLowerCase())) return false;
+// ── HUB LOGIC — START as intermediary ────────────────────────────────────
+function buildHub(){
+  // Find all pairs where START appears
+  const startPairs=ST.pairs.filter(p=>p.pair.includes('START')&&!p.pair.includes('ELIM'));
+  // For each subsidiary, determine net position vs START
+  const subs={};
+  startPairs.forEach(p=>{
+    const parts=p.pair.split('|').map(s=>s.trim());
+    const other=parts[0]==='START'?parts[1]:parts[0];
+    if(!other||other==='START')return;
+    if(!subs[other])subs[other]={entity:other,netVsStart:0,pairs:[]};
+    // positive diff = AR > AP from START's perspective
+    // if pair is "Sub | START": AR is Sub sending to START, AP is Start sending to Sub
+    // net from START's perspective: what does START net on this pair?
+    const isStartRight=parts[1]==='START';
+    const startNet=isStartRight ? p.arT-p.apT : p.apT-p.arT;
+    subs[other].netVsStart+=startNet;
+    subs[other].pairs.push({pair:p.pair,diff:p.diff,balanced:p.balanced});
+  });
+  // Incoming = subs that owe START (net positive for START)
+  // Outgoing = subs START owes (net negative for START)
+  const incoming=Object.values(subs).filter(s=>s.netVsStart>0.02).sort((a,b)=>b.netVsStart-a.netVsStart);
+  const outgoing=Object.values(subs).filter(s=>s.netVsStart<-0.02).sort((a,b)=>a.netVsStart-b.netVsStart);
+  const totalIn=incoming.reduce((s,e)=>s+e.netVsStart,0);
+  const totalOut=outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0);
+  return{incoming,outgoing,totalIn,totalOut,net:totalIn-totalOut};
+}
+
+function filtered(){return ST.pairs.filter(p=>{
+  if(ST.statusFilter==='unbalanced'&&p.balanced)return false;
+  if(ST.statusFilter==='balanced'&&!p.balanced)return false;
+  if(ST.search&&!p.pair.toLowerCase().includes(ST.search.toLowerCase()))return false;
   return true;
-}); }
+});}
 
-function payments(){ return S.pairs.filter(p=>!p.balanced).map(p=>{
-  const [e1,e2]=(p.pair+'|').split('|').map(s=>s.trim());
-  const [payer,payee]=p.diff>0?[e2,e1]:[e1,e2];
-  return {pair:p.pair,payer,payee,amt:Math.abs(p.diff),cur:p.cur,per:p.per};
-}); }
+function payments(){return ST.pairs.filter(p=>!p.balanced).map(p=>{
+  const[e1,e2]=(p.pair+'|').split('|').map(s=>s.trim());
+  const[payer,payee]=p.diff>0?[e2,e1]:[e1,e2];
+  return{pair:p.pair,payer,payee,amt:Math.abs(p.diff),cur:p.cur,per:p.per};
+});}
 
-// ── UPLOAD LOGIC ───────────────────────────────────────────────────────────
+// ── UPLOAD ────────────────────────────────────────────────────────────────
 async function processFile(file){
-  S.uploadStatus='parsing'; S.uploadMsg='Reading file…'; S.uploadProgress=20; render();
-  try {
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf,{type:'array',cellDates:true});
-    const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('interco')&&n.toLowerCase().includes('result'))||wb.SheetNames[0];
-    const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{defval:''});
-
-    S.uploadStatus='saving'; S.uploadMsg=`Saving ${raw.length.toLocaleString()} rows to Supabase…`; S.uploadProgress=40; render();
-
+  ST.uploadStatus='parsing';ST.uploadMsg='Reading file…';ST.uploadProgress=15;render();
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array',cellDates:true});
+    const sn=wb.SheetNames.find(n=>n.toLowerCase().includes('interco')&&n.toLowerCase().includes('result'))||wb.SheetNames[0];
+    const raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
+    ST.uploadStatus='saving';ST.uploadMsg=`Saving ${raw.length.toLocaleString()} rows…`;ST.uploadProgress=35;render();
     const periods=[...new Set(raw.map(r=>String(r['Period']||'')).filter(Boolean))];
-    const [upload] = await sbPost('uploads',{file_name:file.name,row_count:raw.length,periods});
-
+    const[upload]=await api.post('uploads',{file_name:file.name,row_count:raw.length,periods});
     const BATCH=400;
     for(let i=0;i<raw.length;i+=BATCH){
-      const slice=raw.slice(i,i+BATCH).map(r=>({
-        upload_id: upload.id,
-        pair_key:     String(r['Pair Key']||'').trim(),
-        sub_name:     String(r['Sub Name']||'').trim(),
-        relationship: String(r['Relationship']||'').trim(),
-        amount:       parseFloat(r['Amount (Foreign Currency)'])||0,
-        currency:     String(r['Currency']||'').trim(),
-        period:       String(r['Period']||'').trim(),
-        description:  String(r['Description']||'').trim(),
-        who_owes_who: String(r['Who Owes Who']||'').trim(),
-        doc_number:   String(r['Document Number']||'').trim(),
-        memo:         String(r['Memo (Main)']||r['Memo']||'').slice(0,120),
-      }));
-      await sbPost('transactions',slice);
-      S.uploadProgress = 40 + Math.round((i/raw.length)*55);
-      S.uploadMsg = `Saving rows ${i+1}–${Math.min(i+BATCH,raw.length)} of ${raw.length.toLocaleString()}…`;
+      await api.post('transactions',raw.slice(i,i+BATCH).map(r=>({
+        upload_id:upload.id,
+        pair_key:String(r['Pair Key']||'').trim(),
+        sub_name:String(r['Sub Name']||'').trim(),
+        relationship:String(r['Relationship']||'').trim(),
+        amount:parseFloat(r['Amount (Foreign Currency)'])||0,
+        currency:String(r['Currency']||'').trim(),
+        period:String(r['Period']||'').trim(),
+        description:String(r['Description']||'').trim(),
+        who_owes_who:String(r['Who Owes Who']||'').trim(),
+        doc_number:String(r['Document Number']||'').trim(),
+        memo:String(r['Memo (Main)']||r['Memo']||'').slice(0,120),
+      })));
+      ST.uploadProgress=35+Math.round((i/raw.length)*58);
+      ST.uploadMsg=`Saving rows ${i+1}–${Math.min(i+BATCH,raw.length)} of ${raw.length.toLocaleString()}…`;
       render();
     }
-
-    S.uploadStatus='done'; S.uploadMsg='Saved! Loading dashboard…'; S.uploadProgress=100; render();
+    ST.uploadStatus='done';ST.uploadMsg='Saved!';ST.uploadProgress=100;render();
     await loadUpload(upload);
-  } catch(e){
-    S.uploadStatus='error'; S.uploadMsg='Error: '+e.message; render();
-  }
+  }catch(e){ST.uploadStatus='error';ST.uploadMsg='Error: '+e.message;render();}
 }
 
-// ── DATA LOADING ───────────────────────────────────────────────────────────
+// ── LOAD ──────────────────────────────────────────────────────────────────
 async function loadUpload(upload){
-  S.currentUpload=upload; S.screen='loading';
-  document.getElementById('app').innerHTML=`<div class="loading"><span class="spin"></span>Loading ${esc(upload.file_name)}…</div>`;
-  S.rows = await sbGet('transactions',`upload_id=eq.${upload.id}&order=period.asc&limit=9999`);
-  aggregate(S.rows);
-  S.screen='dashboard'; S.view='summary'; S.selectedPair=null; S.search=''; S.statusFilter='all';
+  ST.current=upload;
+  document.getElementById('root').innerHTML=`<div class="app"><div class="loading"><span class="spin"></span>Loading ${esc(upload.file_name)}…</div></div>`;
+  const[rows,pairTagRows,tagsConfig]=await Promise.all([
+    api.get('transactions',`upload_id=eq.${upload.id}&order=period.asc&limit=9999`),
+    api.get('pair_tags',`upload_id=eq.${upload.id}`),
+    api.get('tags_config','order=sort_order.asc'),
+  ]);
+  ST.rows=rows; ST.tagsConfig=tagsConfig;
+  ST.pairTags={};pairTagRows.forEach(t=>ST.pairTags[t.pair_key]=t);
+  ST.txTags={};rows.forEach(r=>{if(r.tag)ST.txTags[r.id]={tag:r.tag,note:r.tag_note,by:r.tagged_by};});
+  aggregate(rows);
+  ST.screen='dashboard';ST.view='hub';ST.selectedPair=null;ST.search='';ST.statusFilter='all';
   render();
 }
 
 async function init(){
-  try {
-    S.uploads = await sbGet('uploads','order=created_at.desc');
-    if(S.uploads.length===0){ S.screen='upload'; S.uploadStatus=null; render(); return; }
-    await loadUpload(S.uploads[0]);
-  } catch(e){
-    document.getElementById('app').innerHTML=`<div class="loading" style="color:#dc2626">Connection error: ${e.message}</div>`;
+  try{
+    ST.uploads=await api.get('uploads','order=created_at.desc');
+    if(ST.uploads.length===0){ST.screen='upload';ST.uploadStatus=null;render();return;}
+    await loadUpload(ST.uploads[0]);
+  }catch(e){
+    document.getElementById('root').innerHTML=`<div class="app"><div class="loading" style="color:#dc2626">Connection error: ${e.message}</div></div>`;
   }
 }
 
-// ── RENDER ─────────────────────────────────────────────────────────────────
-function render(){
-  if(S.screen==='upload'){ renderUpload(); return; }
-  if(S.screen==='dashboard'){ renderDashboard(); return; }
+// ── TAGGING ───────────────────────────────────────────────────────────────
+async function saveTag(){
+  const m=ST.modal,tagger=document.getElementById('tagger-name')?.value||'';
+  const tag=document.getElementById('tag-select')?.value||'';
+  const note=document.getElementById('tag-note')?.value||'';
+  if(!tag)return;
+  if(m.type==='pair'){
+    const existing=ST.pairTags[m.target];
+    if(existing){
+      await api.patch('pair_tags',`id=eq.${existing.id}`,{tag,tag_note:note,tagged_by:tagger,updated_at:new Date().toISOString()});
+    }else{
+      const[row]=await api.post('pair_tags',{upload_id:ST.current.id,pair_key:m.target,tag,tag_note:note,tagged_by:tagger});
+      ST.pairTags[m.target]=row;
+    }
+    if(existing)ST.pairTags[m.target]={...existing,tag,tag_note:note,tagged_by:tagger};
+  }else{
+    await api.patch('transactions',`id=eq.${m.target}`,{tag,tag_note:note,tagged_by:tagger,tagged_at:new Date().toISOString()});
+    ST.txTags[m.target]={tag,note,by:tagger};
+    // update local row
+    const tx=ST.pairs.flatMap(p=>p.txs).find(t=>t.id===m.target);
+    if(tx){tx.tag=tag;tx.tag_note=note;tx.tagged_by=tagger;}
+  }
+  ST.modal=null;render();
 }
 
+async function clearTag(){
+  const m=ST.modal;
+  if(m.type==='pair'&&ST.pairTags[m.target]){
+    await api.patch('pair_tags',`id=eq.${ST.pairTags[m.target].id}`,{tag:null,tag_note:null});
+    delete ST.pairTags[m.target];
+  }else if(m.type==='tx'){
+    await api.patch('transactions',`id=eq.${m.target}`,{tag:null,tag_note:null,tagged_by:null});
+    delete ST.txTags[m.target];
+    const tx=ST.pairs.flatMap(p=>p.txs).find(t=>t.id===m.target);
+    if(tx){tx.tag=null;tx.tag_note=null;tx.tagged_by=null;}
+  }
+  ST.modal=null;render();
+}
+
+async function addCustomTag(){
+  const val=document.getElementById('custom-tag-input')?.value?.trim();
+  if(!val)return;
+  await api.post('tags_config',{tag:val,color:'#374151',sort_order:99});
+  ST.tagsConfig=await api.get('tags_config','order=sort_order.asc');
+  document.getElementById('custom-tag-input').value='';
+  document.getElementById('tag-select').innerHTML=tagOptions();
+}
+
+function tagOptions(selected=''){
+  const base=TAG_DEFS.map(t=>`<option value="${esc(t.tag)}" ${selected===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('');
+  const custom=ST.tagsConfig.filter(t=>!TAG_DEFS.find(d=>d.tag===t.tag))
+    .map(t=>`<option value="${esc(t.tag)}" ${selected===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('');
+  return`<option value="">Select a tag…</option>${base}${custom?'<option disabled>──────────</option>'+custom:''}`;
+}
+
+function pairTagBadge(pairKey,small=false){
+  const pt=ST.pairTags[pairKey];
+  if(!pt||!pt.tag)return`<button class="btn-sm" onclick="openTagModal('pair','${esc(pairKey)}',event)">+ Tag</button>`;
+  return`<span class="tag-badge" style="${tagStyle(pt.tag)}" onclick="openTagModal('pair','${esc(pairKey)}',event)" title="${pt.tagged_by?'by '+pt.tagged_by:''}">${esc(pt.tag)}</span>`;
+}
+
+function txTagBadge(tx){
+  if(!tx.tag)return`<button class="btn-sm" onclick="openTagModal('tx','${tx.id}',event)">+ Tag</button>`;
+  return`<span class="tag-badge" style="${tagStyle(tx.tag)}" onclick="openTagModal('tx','${tx.id}',event)" title="${tx.tagged_by?'by '+tx.tagged_by:''}">${esc(tx.tag)}</span>`;
+}
+
+function openTagModal(type,target,e){
+  if(e)e.stopPropagation();
+  let existing=type==='pair'?ST.pairTags[target]:ST.txTags[target];
+  ST.modal={type,target,existing};render();
+}
+
+// ── RENDER ROOT ───────────────────────────────────────────────────────────
+function render(){
+  const root=document.getElementById('root');
+  if(ST.screen==='upload'){root.innerHTML=`<div class="app">${renderUpload()}</div>`;return;}
+  if(ST.screen==='dashboard'){
+    root.innerHTML=`<div class="app">${renderDashboard()}</div>${ST.modal?renderModal():''}`;
+    return;
+  }
+  root.innerHTML=`<div class="app"><div class="loading"><span class="spin"></span>Loading…</div></div>`;
+}
+
+// ── UPLOAD SCREEN ─────────────────────────────────────────────────────────
 function renderUpload(){
-  const icons = {null:'📂',parsing:'⏳',saving:'💾',done:'✓',error:'✗'};
-  const colors = {error:'#dc2626',done:'#16a34a'};
-  document.getElementById('app').innerHTML=`
-  <div class="upload-wrap">
+  const icons={null:'📂',parsing:'⏳',saving:'💾',done:'✓',error:'✗'};
+  const colors={error:'#dc2626',done:'#16a34a'};
+  return`<div class="upload-wrap">
     <div style="margin-bottom:1.5rem">
-      <div style="font-size:22px;font-weight:500;margin-bottom:6px">Intercompany Recon</div>
+      <div style="font-size:22px;font-weight:500;margin-bottom:5px">Intercompany Recon</div>
       <div style="font-size:13px;color:#666">Evolve2Impact Group · Upload your NetSuite IC export</div>
     </div>
-
-    <div class="drop-zone ${S.uploadStatus?'uploading':''}" id="dropzone"
-      onclick="${!S.uploadStatus?"document.getElementById('fi').click()":''}"
+    <div class="drop-zone ${ST.uploadStatus?'uploading':''}" id="dropzone"
+      onclick="${!ST.uploadStatus?"document.getElementById('fi').click()":''}"
       ondragover="event.preventDefault();this.classList.add('drag')"
       ondragleave="this.classList.remove('drag')"
-      ondrop="event.preventDefault();this.classList.remove('drag');if(!window._S_uploading)handleDrop(event)">
-      <div style="font-size:32px;margin-bottom:12px">${icons[S.uploadStatus]||icons[null]}</div>
-      <div style="font-size:14px;font-weight:500;color:${colors[S.uploadStatus]||'#111'};margin-bottom:6px">
-        ${S.uploadStatus ? S.uploadMsg : 'Drop your .xlsx file here'}
-      </div>
-      <div style="font-size:12px;color:#666">${!S.uploadStatus?'or click to browse · .xlsx, .xls':'&nbsp;'}</div>
-      ${S.uploadStatus&&S.uploadStatus!=='error'&&S.uploadStatus!=='done'?`<div class="progress-bar"><div class="progress-fill" style="width:${S.uploadProgress}%"></div></div>`:''}
+      ondrop="event.preventDefault();this.classList.remove('drag');handleDrop(event)">
+      <div style="font-size:32px;margin-bottom:10px">${icons[ST.uploadStatus]||'📂'}</div>
+      <div style="font-size:14px;font-weight:500;color:${colors[ST.uploadStatus]||'#111'};margin-bottom:5px">
+        ${ST.uploadStatus?ST.uploadMsg:'Drop your .xlsx file here'}</div>
+      <div style="font-size:12px;color:#888">${!ST.uploadStatus?'or click to browse':'&nbsp;'}</div>
+      ${ST.uploadStatus&&ST.uploadStatus!=='error'&&ST.uploadStatus!=='done'?`<div class="progress-bar"><div class="progress-fill" style="width:${ST.uploadProgress}%"></div></div>`:''}
     </div>
     <input id="fi" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handlePick(this)">
-
-    ${S.uploads.length>0?`
+    ${ST.uploads.length?`
     <div style="margin:1.25rem 0;display:flex;gap:10px;align-items:center">
       <div style="flex:1;height:0.5px;background:#e5e5e5"></div>
       <span style="font-size:12px;color:#999">or load a previous month</span>
       <div style="flex:1;height:0.5px;background:#e5e5e5"></div>
     </div>
-    <div class="card">
-      <div class="card-head"><span class="card-title">Upload history</span></div>
-      <table><thead><tr><th>File</th><th>Periods</th><th class="num">Rows</th><th>Date</th><th></th></tr></thead>
-      <tbody>${S.uploads.map(u=>`<tr class="clickable" onclick="loadUpload(${JSON.stringify(u).replace(/"/g,'&quot;')})">
-        <td style="font-weight:500">${esc(u.file_name)}</td>
-        <td class="muted" style="font-size:11px">${(u.periods||[]).join(', ')}</td>
-        <td class="num">${(u.row_count||0).toLocaleString()}</td>
-        <td class="muted" style="font-size:11px">${new Date(u.created_at).toLocaleDateString()}</td>
-        <td><button class="btn" style="font-size:11px">Load →</button></td>
-      </tr>`).join('')}</tbody></table>
-    </div>`:''}
+    <div class="card"><div class="card-head"><span class="card-title">Upload history</span></div>
+    <table><thead><tr><th>File</th><th>Periods</th><th class="num">Rows</th><th>Date</th><th></th></tr></thead>
+    <tbody>${ST.uploads.map(u=>`<tr class="clickable" onclick="loadUpload(${JSON.stringify(u).replace(/"/g,'&quot;')})">
+      <td style="font-weight:500">${esc(u.file_name)}</td>
+      <td class="muted" style="font-size:11px">${(u.periods||[]).join(', ')}</td>
+      <td class="num">${(u.row_count||0).toLocaleString()}</td>
+      <td class="muted" style="font-size:11px">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td><button class="btn" style="font-size:11px">Load →</button></td>
+    </tr>`).join('')}</tbody></table></div>`:''}
+  </div>`;
+}
+function handleDrop(e){const f=e.dataTransfer.files[0];if(f)processFile(f);}
+function handlePick(inp){const f=inp.files[0];if(f)processFile(f);inp.value='';}
 
-    <div style="margin-top:1.25rem;background:#fafafa;border-radius:10px;padding:12px 14px;font-size:12px;color:#666;line-height:1.7">
-      <strong style="color:#111">Expected sheet:</strong> IntercoReconTransactionsResult<br>
-      <strong style="color:#111">Key columns:</strong> Pair Key · Sub Name · Relationship · Amount (Foreign Currency) · Period · Who Owes Who
+// ── DASHBOARD WRAPPER ─────────────────────────────────────────────────────
+function renderDashboard(){
+  const f=filtered(),pmts=payments(),hub=buildHub();
+  const u=ST.current;
+  const ub=ST.pairs.filter(p=>!p.balanced).length;
+  const tv=ST.pairs.reduce((s,p)=>s+Math.abs(p.diff),0);
+  return`
+  <div class="header">
+    <div>
+      <div style="font-size:18px;font-weight:500;margin-bottom:2px">Intercompany Recon</div>
+      <div style="font-size:12px;color:#666">${esc(u?.file_name||'')} · ${ST.rows.length.toLocaleString()} transactions · ${ST.pairs.length} pairs · ${ST.periods.join(', ')}</div>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="ST.screen='upload';render()">+ New upload</button>
+      <button class="btn" onclick="ST.screen='upload';render()">Switch month</button>
+    </div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Entity pairs</div><div class="metric-val">${ST.pairs.length}</div></div>
+    <div class="metric"><div class="metric-label">Balanced</div><div class="metric-val ok">${ST.pairs.length-ub}</div></div>
+    <div class="metric"><div class="metric-label">Variances</div><div class="metric-val ${ub>0?'warn':'ok'}">${ub}</div></div>
+    <div class="metric"><div class="metric-label">Total variance</div><div class="metric-val ${tv>0?'warn':'ok'}">${fmt(tv)}</div></div>
+    <div class="metric"><div class="metric-label">Flowing in → START</div><div class="metric-val ok">${fmt(hub.totalIn)}</div></div>
+    <div class="metric"><div class="metric-label">Flowing out START →</div><div class="metric-val warn">${fmt(hub.totalOut)}</div></div>
+    <div class="metric"><div class="metric-label">START net position</div><div class="metric-val ${hub.net>=0?'ok':'warn'}">${hub.net>=0?'+':''}${fmt(hub.net)}</div></div>
+  </div>
+  <div class="tabs">
+    <button class="tab ${ST.view==='hub'?'active':''}" onclick="ST.view='hub';render()">START Hub</button>
+    <button class="tab ${ST.view==='summary'?'active':''}" onclick="ST.view='summary';render()">All Pairs</button>
+    <button class="tab ${ST.view==='monthly'?'active':''}" onclick="ST.view='monthly';render()">By Month</button>
+    <button class="tab ${ST.view==='payments'?'active':''}" onclick="ST.view='payments';render()">Payment Queue${pmts.length>0?' ('+pmts.length+')':''}</button>
+  </div>
+  ${ST.view==='hub'?renderHub(hub):''}
+  ${ST.view==='summary'?renderSummary(f):''}
+  ${ST.view==='monthly'?renderMonthly(f):''}
+  ${ST.view==='payments'?renderPayments(pmts):''}`;
+}
+
+// ── HUB VIEW ─────────────────────────────────────────────────────────────
+function renderHub(hub){
+  return`
+  <div class="hub-row">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">↓ Incoming to START</span>
+        <span style="font-size:13px;font-weight:500;color:#16a34a">${fmt(hub.totalIn)}</span>
+      </div>
+      <table>
+        <thead><tr><th>Entity</th><th class="num">Owes START</th><th>Status</th><th>Tag</th></tr></thead>
+        <tbody>
+          ${hub.incoming.length?hub.incoming.map(e=>`
+          <tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
+            <td style="font-weight:500">${esc(e.entity)}</td>
+            <td class="num ok" style="font-weight:500">${fmt(e.netVsStart)}</td>
+            <td>${e.pairs.every(p=>p.balanced)?'<span style="font-size:11px;color:#16a34a">✓ Clean</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
+            <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
+          </tr>`).join(''):'<tr><td colspan="4" class="empty">No entities owe START</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">↑ Outgoing from START</span>
+        <span style="font-size:13px;font-weight:500;color:#dc2626">${fmt(hub.totalOut)}</span>
+      </div>
+      <table>
+        <thead><tr><th>Entity</th><th class="num">START owes</th><th>Status</th><th>Tag</th></tr></thead>
+        <tbody>
+          ${hub.outgoing.length?hub.outgoing.map(e=>`
+          <tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
+            <td style="font-weight:500">${esc(e.entity)}</td>
+            <td class="num warn" style="font-weight:500">${fmt(Math.abs(e.netVsStart))}</td>
+            <td>${e.pairs.every(p=>p.balanced)?'<span style="font-size:11px;color:#16a34a">✓ Clean</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
+            <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
+          </tr>`).join(''):'<tr><td colspan="4" class="empty">START owes no entities</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Payment waterfall — all flows through START</span>
+      <span style="font-size:11px;color:#888">Click any row to drill in</span>
+    </div>
+    <div class="scroll-x"><table>
+      <thead><tr><th>From</th><th></th><th>Via</th><th></th><th>To</th><th class="num">Amount</th><th>Currencies</th><th>Pair tag</th></tr></thead>
+      <tbody>
+        ${hub.incoming.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
+          <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(e.entity)}</span></td>
+          <td class="muted" style="font-size:16px;text-align:center">→</td>
+          <td><span style="background:#f0fdf4;color:#166534;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid #bbf7d0">START</span></td>
+          <td class="muted" style="font-size:16px;text-align:center">→</td>
+          <td class="muted" style="font-size:12px">Clears internally</td>
+          <td class="num ok" style="font-weight:500">${fmt(e.netVsStart)}</td>
+          <td class="muted" style="font-size:11px">${[...new Set(e.pairs.flatMap(p=>{const pair=ST.pairs.find(x=>x.pair===p.pair);return pair?pair.cur:[]}))].join(', ')}</td>
+          <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
+        </tr>`).join('')}
+        ${hub.outgoing.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
+          <td class="muted" style="font-size:12px">Clears internally</td>
+          <td class="muted" style="font-size:16px;text-align:center">→</td>
+          <td><span style="background:#f0fdf4;color:#166534;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid #bbf7d0">START</span></td>
+          <td class="muted" style="font-size:16px;text-align:center">→</td>
+          <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(e.entity)}</span></td>
+          <td class="num warn" style="font-weight:500">${fmt(Math.abs(e.netVsStart))}</td>
+          <td class="muted" style="font-size:11px">${[...new Set(e.pairs.flatMap(p=>{const pair=ST.pairs.find(x=>x.pair===p.pair);return pair?pair.cur:[]}))].join(', ')}</td>
+          <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
+        </tr>`).join('')}
+        ${(!hub.incoming.length&&!hub.outgoing.length)?'<tr><td colspan="8" class="empty">All pairs balanced — no flows required</td></tr>':''}
+      </tbody>
+    </table></div>
   </div>`;
 }
 
-function handleDrop(e){ const f=e.dataTransfer.files[0]; if(f) processFile(f); }
-function handlePick(inp){ const f=inp.files[0]; if(f) processFile(f); inp.value=''; }
-
-function renderDashboard(){
-  const f=filtered(), pmts=payments();
-  const u=S.currentUpload;
-  const detail=S.selectedPair?S.pairs.find(p=>p.pair===S.selectedPair):null;
-  const filtTx=detail?detail.txs.filter(t=>{
-    if(S.txPeriod&&t.per!==S.txPeriod) return false;
-    if(S.txDesc&&t.desc!==S.txDesc) return false;
-    if(S.txSide==='ar'&&!t.isAR) return false;
-    if(S.txSide==='ap'&&t.isAR) return false;
-    return true;
-  }):[];
-  const tv=S.pairs.reduce((s,p)=>s+Math.abs(p.diff),0);
-  const ub=S.pairs.filter(p=>!p.balanced).length;
-
-  document.getElementById('app').innerHTML=`
-  <div class="header">
-    <div>
-      <div class="header-title">Intercompany Recon</div>
-      <div class="header-sub">${esc(u?u.file_name:'')} · ${S.rows.length.toLocaleString()} transactions · ${S.pairs.length} pairs · ${S.periods.join(', ')}</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="S.screen='upload';render()">+ New upload</button>
-      <button class="btn" onclick="S.screen='upload';render()">Switch month</button>
-      ${u?`<button class="btn btn-danger" onclick="deleteUpload('${u.id}')">Delete</button>`:''}
-    </div>
-  </div>
-
-  <div class="metrics">
-    <div class="metric"><div class="metric-label">Entity pairs</div><div class="metric-val">${S.pairs.length}</div></div>
-    <div class="metric"><div class="metric-label">Balanced</div><div class="metric-val ok">${S.pairs.length-ub}</div></div>
-    <div class="metric"><div class="metric-label">Variances</div><div class="metric-val ${ub>0?'warn':'ok'}">${ub}</div></div>
-    <div class="metric"><div class="metric-label">Total variance</div><div class="metric-val ${tv>0?'warn':'ok'}">${fmt(tv)}</div></div>
-    <div class="metric"><div class="metric-label">Transactions</div><div class="metric-val">${S.rows.length.toLocaleString()}</div></div>
-    <div class="metric"><div class="metric-label">Periods</div><div class="metric-val">${S.periods.length}</div></div>
-  </div>
-
-  <div class="tabs">
-    <button class="tab ${S.view==='summary'?'active':''}" onclick="S.view='summary';render()">Summary</button>
-    <button class="tab ${S.view==='monthly'?'active':''}" onclick="S.view='monthly';render()">By month</button>
-    <button class="tab ${S.view==='payments'?'active':''}" onclick="S.view='payments';render()">Payment queue${pmts.length>0?' ('+pmts.length+')':''}</button>
-  </div>
-
-  ${S.view==='summary'?renderSummaryHTML(f,detail,filtTx):''}
-  ${S.view==='monthly'?renderMonthlyHTML(f):''}
-  ${S.view==='payments'?renderPaymentsHTML(pmts):''}
-  `;
+function drillSub(entity){
+  const pair=ST.pairs.find(p=>p.pair.includes(entity)&&p.pair.includes('START')&&!p.pair.includes('ELIM'));
+  if(pair){ST.selectedPair=pair.pair;ST.view='summary';ST.txPeriod='';ST.txDesc='';ST.txSide='';render();
+    setTimeout(()=>{const el=document.getElementById('drill');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},80);}
 }
 
-function renderSummaryHTML(f,detail,filtTx){
-  return `
+// ── SUMMARY VIEW ──────────────────────────────────────────────────────────
+function renderSummary(f){
+  const detail=ST.selectedPair?ST.pairs.find(p=>p.pair===ST.selectedPair):null;
+  const filtTx=detail?detail.txs.filter(t=>{
+    if(ST.txPeriod&&t.per!==ST.txPeriod)return false;
+    if(ST.txDesc&&t.desc!==ST.txDesc)return false;
+    if(ST.txSide==='ar'&&!t.isAR)return false;
+    if(ST.txSide==='ap'&&t.isAR)return false;
+    if(ST.txTagFilter&&t.tag!==ST.txTagFilter)return false;
+    return true;
+  }):[];
+  return`
   <div class="filters">
-    <select onchange="S.statusFilter=this.value;render()">
-      <option value="all" ${S.statusFilter==='all'?'selected':''}>All pairs</option>
-      <option value="unbalanced" ${S.statusFilter==='unbalanced'?'selected':''}>Variances only</option>
-      <option value="balanced" ${S.statusFilter==='balanced'?'selected':''}>Balanced only</option>
+    <select onchange="ST.statusFilter=this.value;render()">
+      <option value="all" ${ST.statusFilter==='all'?'selected':''}>All pairs</option>
+      <option value="unbalanced" ${ST.statusFilter==='unbalanced'?'selected':''}>Variances only</option>
+      <option value="balanced" ${ST.statusFilter==='balanced'?'selected':''}>Balanced only</option>
     </select>
-    <input type="search" placeholder="Search pair…" value="${esc(S.search)}" oninput="S.search=this.value;render()" style="width:180px">
-    <span class="muted" style="font-size:12px;margin-left:auto">${f.length} pairs shown</span>
+    <input type="search" placeholder="Search pair…" value="${esc(ST.search)}" oninput="ST.search=this.value;render()" style="width:180px">
+    <span class="muted" style="font-size:12px;margin-left:auto">${f.length} pairs</span>
   </div>
   <div class="card"><div class="scroll-x"><table>
     <thead><tr>
       <th>Entity pair</th><th class="num">AR total</th><th class="num">AP total</th>
-      <th class="num">Variance</th><th>Status</th><th>Currencies</th><th class="num">Txns</th>
+      <th class="num">Variance</th><th>Status</th><th>Currencies</th><th>Pair tag</th><th class="num">Txns</th>
     </tr></thead>
-    <tbody>${f.map(p=>`<tr class="clickable ${S.selectedPair===p.pair?'active':''}" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
-      <td style="font-weight:500;min-width:150px">${esc(p.pair)}</td>
+    <tbody>${f.map(p=>`<tr class="clickable ${ST.selectedPair===p.pair?'selected':''}" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
+      <td style="font-weight:500;min-width:145px">${esc(p.pair)}</td>
       <td class="num ok">${fmt(p.arT)}</td>
       <td class="num info">${fmt(p.apT)}</td>
       <td class="num" style="font-weight:500">${fmtD(p.diff)}</td>
-      <td>${p.balanced?'<span class="badge-ok">✓ Balanced</span>':'<span class="badge-warn">⚠ Variance</span>'}</td>
+      <td>${p.balanced?'<span style="font-size:11px;color:#16a34a">✓ Balanced</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
       <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
+      <td>${pairTagBadge(p.pair)}</td>
       <td class="num">${p.txs.length}</td>
     </tr>`).join('')}
-    ${f.length===0?'<tr><td colspan="7" class="empty">No pairs match</td></tr>':''}</tbody>
+    ${f.length===0?'<tr><td colspan="8" class="empty">No pairs match</td></tr>':''}</tbody>
   </table></div></div>
 
   ${detail?`<div class="card" id="drill" style="border:0.5px solid #111">
@@ -352,139 +523,173 @@ function renderSummaryHTML(f,detail,filtTx){
         <span class="card-title">${esc(detail.pair)}</span>
         ${detail.per.map(p=>`<span class="pill">${p}</span>`).join('')}
         ${detail.cur.map(c=>`<span class="pill">${c}</span>`).join('')}
+        ${pairTagBadge(detail.pair)}
       </div>
-      <button class="btn" onclick="S.selectedPair=null;render()">✕ Close</button>
+      <button class="btn" onclick="ST.selectedPair=null;render()">✕</button>
     </div>
     ${detail.who.length?`<div style="padding:8px 14px;border-bottom:0.5px solid #e5e5e5;background:#fafafa;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-      <span style="font-size:11px;color:#666">Who owes who:</span>
+      <span style="font-size:11px;color:#888">Who owes who:</span>
       ${[...new Set(detail.who)].map(w=>`<span class="pill" style="font-weight:500">${esc(w)}</span>`).join('')}
     </div>`:''}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:0.5px solid #e5e5e5">
       ${[['AR total',fmt(detail.arT),'ok'],['AP total',fmt(detail.apT),'info'],['Variance',fmtD(detail.diff),''],['Transactions',detail.txs.length,'']].map(([l,v,c])=>`
       <div style="padding:10px 14px;border-right:0.5px solid #e5e5e5">
-        <div style="font-size:11px;color:#666;margin-bottom:3px">${l}</div>
+        <div style="font-size:11px;color:#888;margin-bottom:3px">${l}</div>
         <div style="font-size:14px;font-weight:500" class="${c}">${v}</div>
       </div>`).join('')}
     </div>
-    <div class="scroll-x" style="border-bottom:0.5px solid #e5e5e5">
-      <table><thead><tr><th>Period</th><th class="num">AR</th><th class="num">AP</th><th class="num">Variance</th></tr></thead>
-      <tbody>${detail.per.map(per=>{
-        const ar=detail.arByP[per]||0,ap=detail.apByP[per]||0,d=ar-ap;
-        return `<tr class="clickable" onclick="S.txPeriod=S.txPeriod==='${per}'?'':'${per}';render()">
-          <td><span class="pill" style="${S.txPeriod===per?'background:#111;color:#fff':''};cursor:pointer">${per}</span></td>
+    <div class="scroll-x" style="border-bottom:0.5px solid #e5e5e5"><table>
+      <thead><tr><th>Period</th><th class="num">AR</th><th class="num">AP</th><th class="num">Variance</th></tr></thead>
+      <tbody>${detail.per.map(per=>{const ar=detail.arByP[per]||0,ap=detail.apByP[per]||0,d=ar-ap;
+        return`<tr class="clickable" onclick="ST.txPeriod=ST.txPeriod==='${per}'?'':'${per}';render()">
+          <td><span class="pill" style="${ST.txPeriod===per?'background:#111;color:#fff':''};cursor:pointer">${per}</span></td>
           <td class="num ok">${fmt(ar)}</td><td class="num info">${fmt(ap)}</td>
           <td class="num" style="font-weight:${Math.abs(d)<0.02?400:500}">${fmtD(d)}</td>
-        </tr>`;
-      }).join('')}</tbody></table>
-    </div>
+        </tr>`;}).join('')}</tbody>
+    </table></div>
     <div style="display:flex;gap:8px;padding:8px 14px;border-bottom:0.5px solid #e5e5e5;flex-wrap:wrap;align-items:center">
-      <span style="font-size:11px;color:#666">Filter transactions:</span>
-      <select onchange="S.txPeriod=this.value;render()">
+      <span style="font-size:11px;color:#888">Filter:</span>
+      <select onchange="ST.txPeriod=this.value;render()">
         <option value="">All periods</option>
-        ${detail.per.map(p=>`<option value="${p}" ${S.txPeriod===p?'selected':''}>${p}</option>`).join('')}
+        ${detail.per.map(p=>`<option value="${p}" ${ST.txPeriod===p?'selected':''}>${p}</option>`).join('')}
       </select>
-      <select onchange="S.txDesc=this.value;render()">
+      <select onchange="ST.txDesc=this.value;render()">
         <option value="">All types</option>
-        ${detail.desc.map(d=>`<option value="${esc(d)}" ${S.txDesc===d?'selected':''}>${esc(d)}</option>`).join('')}
+        ${detail.desc.map(d=>`<option value="${esc(d)}" ${ST.txDesc===d?'selected':''}>${esc(d)}</option>`).join('')}
       </select>
-      <select onchange="S.txSide=this.value;render()">
-        <option value="" ${S.txSide===''?'selected':''}>Both sides</option>
-        <option value="ar" ${S.txSide==='ar'?'selected':''}>AR only</option>
-        <option value="ap" ${S.txSide==='ap'?'selected':''}>AP only</option>
+      <select onchange="ST.txSide=this.value;render()">
+        <option value="">Both sides</option>
+        <option value="ar" ${ST.txSide==='ar'?'selected':''}>AR only</option>
+        <option value="ap" ${ST.txSide==='ap'?'selected':''}>AP only</option>
+      </select>
+      <select onchange="ST.txTagFilter=this.value;render()">
+        <option value="">All tags</option>
+        ${TAG_DEFS.map(t=>`<option value="${esc(t.tag)}" ${ST.txTagFilter===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('')}
       </select>
       <span class="muted" style="font-size:11px;margin-left:auto">${filtTx.length} of ${detail.txs.length}</span>
     </div>
     <div class="scroll-x scroll-y"><table>
-      <thead><tr><th>Side</th><th>Entity</th><th>Period</th><th>Type</th><th class="num">Amount</th><th>Curr</th><th>Memo</th><th>Doc #</th></tr></thead>
+      <thead><tr><th>Side</th><th>Entity</th><th>Period</th><th>Type</th><th class="num">Amount</th><th>Curr</th><th>Tag</th><th>Memo</th><th>Doc #</th></tr></thead>
       <tbody>${filtTx.map(t=>`<tr style="background:${t.isAR?'#f0fdf4':'#eff6ff'}">
-        <td>${t.isAR?'<span class="badge-ok" style="font-size:10px">AR</span>':'<span class="badge-ap">AP</span>'}</td>
+        <td>${t.isAR?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>':'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}</td>
         <td style="font-weight:500">${esc(t.sub)}</td><td>${esc(t.per)}</td><td>${esc(t.desc)}</td>
         <td class="num">${fmt(t.amt)}</td><td>${esc(t.cur)}</td>
-        <td class="muted" style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.memo)}</td>
+        <td>${txTagBadge(t)}</td>
+        <td class="muted" style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.memo)}</td>
         <td class="muted" style="font-size:11px">${esc(t.doc)}</td>
       </tr>`).join('')}
-      ${filtTx.length===0?'<tr><td colspan="8" class="empty">No transactions match</td></tr>':''}</tbody>
+      ${filtTx.length===0?'<tr><td colspan="9" class="empty">No transactions match</td></tr>':''}</tbody>
     </table></div>
   </div>`:''}`;
 }
 
-function renderMonthlyHTML(f){
-  return `
+// ── MONTHLY VIEW ──────────────────────────────────────────────────────────
+function renderMonthly(f){
+  return`
   <div class="filters">
-    <select onchange="S.statusFilter=this.value;render()">
-      <option value="all" ${S.statusFilter==='all'?'selected':''}>All pairs</option>
-      <option value="unbalanced" ${S.statusFilter==='unbalanced'?'selected':''}>Variances only</option>
-      <option value="balanced" ${S.statusFilter==='balanced'?'selected':''}>Balanced only</option>
+    <select onchange="ST.statusFilter=this.value;render()">
+      <option value="all" ${ST.statusFilter==='all'?'selected':''}>All pairs</option>
+      <option value="unbalanced" ${ST.statusFilter==='unbalanced'?'selected':''}>Variances only</option>
+      <option value="balanced" ${ST.statusFilter==='balanced'?'selected':''}>Balanced only</option>
     </select>
-    <input type="search" placeholder="Search pair…" value="${esc(S.search)}" oninput="S.search=this.value;render()" style="width:180px">
+    <input type="search" placeholder="Search pair…" value="${esc(ST.search)}" oninput="ST.search=this.value;render()" style="width:180px">
   </div>
   <div class="card"><div class="scroll-x"><table>
     <thead>
       <tr>
-        <th style="min-width:160px;position:sticky;left:0">Entity pair</th>
-        ${S.periods.map(p=>`<th colspan="3" style="text-align:center;border-left:0.5px solid #e5e5e5">${p}</th>`).join('')}
+        <th style="min-width:160px;position:sticky;left:0;z-index:2">Entity pair</th>
+        <th style="position:sticky;left:160px;z-index:2;min-width:100px">Pair tag</th>
+        ${ST.periods.map(p=>`<th colspan="3" style="text-align:center;border-left:0.5px solid #e5e5e5">${p}</th>`).join('')}
       </tr>
       <tr>
-        <th style="position:sticky;left:0"></th>
-        ${S.periods.map(p=>['AR','AP','Var'].map(h=>`<th class="num" style="font-size:10px;${h==='AR'?'border-left:0.5px solid #e5e5e5':''}">${h}</th>`).join('')).join('')}
+        <th style="position:sticky;left:0;z-index:2"></th>
+        <th style="position:sticky;left:160px;z-index:2"></th>
+        ${ST.periods.map(()=>['AR','AP','Var'].map((h,i)=>`<th class="num" style="font-size:10px;${i===0?'border-left:0.5px solid #e5e5e5':''}">${h}</th>`).join('')).join('')}
       </tr>
     </thead>
-    <tbody>${f.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');S.view='summary';render()">
-      <td style="font-weight:500;position:sticky;left:0;background:#fff;min-width:160px">${esc(p.pair)}</td>
-      ${S.periods.map(per=>{
-        const ar=p.arByP[per]||0,ap=p.apByP[per]||0,d=ar-ap;
-        return `<td class="num ok" style="font-size:11px;border-left:0.5px solid #f0f0f0">${ar>0?fmt(ar):'—'}</td>
+    <tbody>${f.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">
+      <td style="font-weight:500;position:sticky;left:0;background:#fff;min-width:160px;z-index:1">${esc(p.pair)}</td>
+      <td style="position:sticky;left:160px;background:#fff;z-index:1;min-width:100px">${pairTagBadge(p.pair)}</td>
+      ${ST.periods.map(per=>{const ar=p.arByP[per]||0,ap=p.apByP[per]||0,d=ar-ap;
+        return`<td class="num ok" style="font-size:11px;border-left:0.5px solid #f0f0f0">${ar>0?fmt(ar):'—'}</td>
           <td class="num info" style="font-size:11px">${ap>0?fmt(ap):'—'}</td>
-          <td class="num" style="font-size:11px;font-weight:${Math.abs(d)>0.02?500:400};color:${Math.abs(d)>0.02?'#dc2626':'#999'}">${Math.abs(d)>0.02?fmtD(d):'—'}</td>`;
-      }).join('')}
+          <td class="num" style="font-size:11px;font-weight:${Math.abs(d)>0.02?500:400};color:${Math.abs(d)>0.02?'#dc2626':'#aaa'}">${Math.abs(d)>0.02?fmtD(d):'—'}</td>`;}).join('')}
     </tr>`).join('')}</tbody>
   </table></div></div>`;
 }
 
-function renderPaymentsHTML(pmts){
-  if(!pmts.length) return `<div class="card" style="padding:3rem;text-align:center;color:#666">
-    <div style="font-size:32px;margin-bottom:12px">✓</div>
+// ── PAYMENT QUEUE ─────────────────────────────────────────────────────────
+function renderPayments(pmts){
+  if(!pmts.length)return`<div class="card" style="padding:3rem;text-align:center;color:#666">
+    <div style="font-size:32px;margin-bottom:10px">✓</div>
     <p style="font-weight:500;color:#111;margin-bottom:4px">All pairs balanced</p>
-    <p style="font-size:12px">No payments required</p>
-  </div>`;
-  return `
-  <div style="background:#fef2f2;border:0.5px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:1rem;display:flex;gap:10px;align-items:center">
-    <span style="font-size:20px;flex-shrink:0">⚠</span>
+    <p style="font-size:12px">No payments required</p></div>`;
+  return`
+  <div style="background:#fef2f2;border:0.5px solid #fca5a5;border-radius:10px;padding:11px 14px;margin-bottom:1rem;display:flex;gap:10px;align-items:center">
+    <span style="font-size:20px">⚠</span>
     <div>
-      <p style="font-size:13px;font-weight:500;color:#dc2626;margin-bottom:2px">${pmts.length} pair${pmts.length>1?'s':''} require action</p>
-      <p style="font-size:12px;color:#dc2626">Total outstanding: ${fmt(pmts.reduce((s,p)=>s+p.amt,0))}</p>
+      <p style="font-size:13px;font-weight:500;color:#dc2626;margin-bottom:2px">${pmts.length} pair${pmts.length>1?'s':''} require action · Total outstanding: ${fmt(pmts.reduce((s,p)=>s+p.amt,0))}</p>
+      <p style="font-size:12px;color:#dc2626">All payments route through START as intermediary</p>
     </div>
   </div>
-  <div class="card"><div class="card-head"><span class="card-title">Payment queue — who pays whom</span></div>
+  <div class="card"><div class="card-head"><span class="card-title">Payment queue — routed through START</span></div>
   <div class="scroll-x"><table>
-    <thead><tr><th>Pair</th><th>Payer (owes)</th><th></th><th>Payee (receives)</th><th class="num">Amount due</th><th>Currencies</th><th>Periods</th><th></th></tr></thead>
-    <tbody>${pmts.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');S.view='summary';render()">
+    <thead><tr><th>Pair</th><th>Payer</th><th></th><th>Via START</th><th></th><th>Payee</th><th class="num">Amount due</th><th>Currencies</th><th>Tag</th><th></th></tr></thead>
+    <tbody>${pmts.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">
       <td style="font-weight:500">${esc(p.pair)}</td>
       <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(p.payer)}</span></td>
       <td class="muted">→</td>
-      <td><span style="background:#dcfce7;color:#16a34a;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(p.payee)}</span></td>
+      <td><span style="background:#f0fdf4;color:#166534;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid #bbf7d0">START</span></td>
+      <td class="muted">→</td>
+      <td><span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(p.payee)}</span></td>
       <td class="num warn" style="font-size:13px;font-weight:500">${fmt(p.amt)}</td>
       <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
-      <td class="muted" style="font-size:11px">${p.per.join(', ')}</td>
-      <td><button class="btn" style="font-size:11px" onclick="event.stopPropagation();selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');S.view='summary';render()">Investigate →</button></td>
+      <td>${pairTagBadge(p.pair)}</td>
+      <td><button class="btn" style="font-size:11px" onclick="event.stopPropagation();selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">Drill in →</button></td>
     </tr>`).join('')}</tbody>
-  </table></div></div>
-  <p style="font-size:11px;color:#999;padding:4px 0">Payer/payee inferred from AR vs AP totals and Who Owes Who field. Click any row to drill into transactions.</p>`;
+  </table></div></div>`;
 }
 
 function selectPair(pair){
-  S.selectedPair = S.selectedPair===pair?null:pair;
-  S.txPeriod=''; S.txDesc=''; S.txSide='';
+  ST.selectedPair=ST.selectedPair===pair?null:pair;
+  ST.txPeriod='';ST.txDesc='';ST.txSide='';ST.txTagFilter='';
   render();
-  setTimeout(()=>{const el=document.getElementById('drill');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},50);
+  setTimeout(()=>{const el=document.getElementById('drill');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},60);
 }
 
-async function deleteUpload(id){
-  if(!confirm('Delete this upload and all its transactions from Supabase?')) return;
-  await sbDelete('transactions',`upload_id=eq.${id}`);
-  await sbDelete('uploads',`id=eq.${id}`);
-  S.uploads = await sbGet('uploads','order=created_at.desc');
-  S.screen='upload'; render();
+// ── TAG MODAL ─────────────────────────────────────────────────────────────
+function renderModal(){
+  const m=ST.modal;
+  const existing=m.type==='pair'?ST.pairTags[m.target]:ST.txTags[m.target];
+  const label=m.type==='pair'?`Tag pair: ${m.target}`:'Tag transaction';
+  return`<div class="modal-overlay" onclick="ST.modal=null;render()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">${esc(label)}</div>
+    <div class="form-row">
+      <label class="form-label">Your name (optional — shown to team)</label>
+      <input type="text" id="tagger-name" placeholder="e.g. Yary" style="width:100%" value="${esc(existing?.by||existing?.tagged_by||'')}">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Tag <span style="color:#dc2626">*</span></label>
+      <select id="tag-select" style="width:100%">${tagOptions(existing?.tag||'')}</select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Add a custom tag</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="custom-tag-input" placeholder="Type new tag…" style="flex:1">
+        <button class="btn" onclick="addCustomTag()">Add</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Note (optional)</label>
+      <textarea id="tag-note" placeholder="Add context for your team…">${esc(existing?.tag_note||existing?.note||'')}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+      ${existing?.tag?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="clearTag()">Remove tag</button>`:''}
+      <button class="btn" onclick="ST.modal=null;render()">Cancel</button>
+      <button class="btn-dark" onclick="saveTag()">Save tag</button>
+    </div>
+  </div></div>`;
 }
 
 init();
