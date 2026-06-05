@@ -147,7 +147,7 @@ const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
-  stmtEntity:null,settlementView:'all',settlementEntity:null,
+  stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,
   rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},
   editingCell:null,
   modal:null,
@@ -388,6 +388,16 @@ function exportExcel(type){
     const rows=ST.rows.map(r=>allCols.map(c=>r[c.key]??''));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'RAW DATA');
   }
+  if(type==='jv'||type==='all'){
+    const jvd=buildJV();
+    html+=`<h2>JV View</h2>`;
+    [{label:'START → JV',pairs:jvd.startToJV},{label:'JV → START',pairs:jvd.jvToStart},{label:'JV ↔ JV',pairs:jvd.jvToJV}].forEach(sec=>{
+      html+=`<h3>${sec.label} (${sec.pairs.length} pairs)</h3>
+      <table><tr><th>Pair</th><th>AR</th><th>AP</th><th>Variance</th><th>Status</th><th>Descriptions</th></tr>
+      ${sec.pairs.map(p=>`<tr><td>${esc(p.pair)}</td><td class="ok">$${p.arT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="info">$${p.apT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="${p.balanced?'ok':'warn'}">${p.balanced?'—':'$'+Math.abs(p.diff).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${p.balanced?'Balanced':'Variance'}</td><td>${esc(p.desc.join(', '))}</td></tr>`).join('')}
+      </table>`;
+    });
+  }
   if(type==='summary'||type==='all'){
     const hdr=['Pair Key','AR Total','AP Total','Variance','Status','Currencies'];
     const rows=ST.pairs.map(p=>[p.pair,p.arT,p.apT,p.diff,p.balanced?'Balanced':'Variance',p.cur.join(',')]);
@@ -411,6 +421,19 @@ function exportExcel(type){
     const rows=[...hub.incoming.map(e=>['Incoming',e.entity,e.netVsStart,e.pairs.every(p=>p.balanced)?'Yes':'No']),
       ...hub.outgoing.map(e=>['Outgoing',e.entity,Math.abs(e.netVsStart),e.pairs.every(p=>p.balanced)?'Yes':'No'])];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'START Hub');
+  }
+  if(type==='jv'||type==='all'){
+    const jvd=buildJV();
+    const sections=[
+      {label:'START to JV', pairs:jvd.startToJV},
+      {label:'JV to START', pairs:jvd.jvToStart},
+      {label:'JV to JV',    pairs:jvd.jvToJV},
+    ];
+    sections.forEach(sec=>{
+      const hdr=['Pair','AR Total','AP Total','Variance','Status','Currencies','Descriptions'];
+      const rows=sec.pairs.map(p=>[p.pair,p.arT,p.apT,p.diff,p.balanced?'Balanced':'Variance',p.cur.join(','),p.desc.join(',')]);
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),sec.label);
+    });
   }
   if(type==='settlement'||type==='all'){
     const sdata=buildSettlement();
@@ -573,6 +596,7 @@ function renderDashboard(){
     <button class="tab ${ST.view==='summary'?'active':''}" onclick="ST.view='summary';render()">All Pairs</button>
     <button class="tab ${ST.view==='monthly'?'active':''}" onclick="ST.view='monthly';render()">By Month</button>
     <button class="tab ${ST.view==='payments'?'active':''}" onclick="ST.view='payments';render()">Payments${pmts.length>0?' ('+pmts.length+')':''}</button>
+    <button class="tab ${ST.view==='jv'?'active':''}" onclick="ST.view='jv';render()">JV View</button>
     <button class="tab ${ST.view==='settlement'?'active':''}" onclick="ST.view='settlement';render()">Settlement</button>
     <button class="tab ${ST.view==='statements'?'active':''}" onclick="ST.view='statements';render()">Entity Statements</button>
     <button class="tab ${ST.view==='raw'?'active':''}" onclick="ST.view='raw';render()">Raw Data</button>
@@ -581,6 +605,7 @@ function renderDashboard(){
   ${ST.view==='summary'?renderSummary(f):''}
   ${ST.view==='monthly'?renderMonthly(f):''}
   ${ST.view==='payments'?renderPayments(pmts):''}
+  ${ST.view==='jv'?renderJV():''}
   ${ST.view==='settlement'?renderSettlement():''}
   ${ST.view==='statements'?renderStatements():''}
   ${ST.view==='raw'?renderRaw():''}`;
@@ -763,6 +788,231 @@ function renderPayments(pmts){
       <td><button class="btn" style="font-size:11px" onclick="event.stopPropagation();selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">Drill in →</button></td>
     </tr>`).join('')}</tbody>
   </table></div></div>`;
+}
+
+function buildJV(){
+  // Classify pairs: START→JV, JV→START, JV→JV (no ELIM)
+  const isStart = e => e==='START'||e==='START ELIM';
+  const startToJV=[], jvToStart=[], jvToJV=[];
+
+  ST.pairs.forEach(p=>{
+    const parts=p.pair.split('|').map(s=>s.trim());
+    if(parts.length!==2)return;
+    const[e1,e2]=parts;
+    if(p.pair.includes('ELIM'))return;
+    const s1=isStart(e1),s2=isStart(e2);
+    if(s1&&!s2) startToJV.push(p);
+    else if(!s1&&s2) jvToStart.push(p);
+    else if(!s1&&!s2) jvToJV.push(p);
+  });
+
+  // For each section build entity-level net positions
+  function entityNets(pairs){
+    const map={};
+    pairs.forEach(p=>{
+      const parts=p.pair.split('|').map(s=>s.trim());
+      const[e1,e2]=parts;
+      [e1,e2].forEach(e=>{
+        if(!map[e])map[e]={entity:e,ar:0,ap:0,pairs:[]};
+      });
+      map[e1].ar+=p.arT; map[e1].ap+=p.apT;
+      map[e2].ar+=p.apT; map[e2].ap+=p.arT; // mirror
+      map[e1].pairs.push(p); map[e2].pairs.push(p);
+    });
+    return Object.values(map).sort((a,b)=>Math.abs(b.ar-b.ap)-Math.abs(a.ar-a.ap));
+  }
+
+  return{
+    startToJV,jvToStart,jvToJV,
+    startToJVNets:entityNets(startToJV),
+    jvToStartNets:entityNets(jvToStart),
+    jvToJVNets:entityNets(jvToJV),
+    totalStartToJV:startToJV.reduce((s,p)=>s+p.arT,0),
+    totalJVToStart:jvToStart.reduce((s,p)=>s+p.arT,0),
+    totalJVToJV:jvToJV.reduce((s,p)=>s+(p.arT+p.apT)/2,0),
+    unbalStartToJV:startToJV.filter(p=>!p.balanced).length,
+    unbalJVToStart:jvToStart.filter(p=>!p.balanced).length,
+    unbalJVToJV:jvToJV.filter(p=>!p.balanced).length,
+  };
+}
+
+function renderJV(){
+  const jv=buildJV();
+  const sections=[
+    {key:'start-to-jv', label:'START → JV', pairs:jv.startToJV, desc:'Amounts START has extended to JV entities', color:'#2563eb', bg:'#eff6ff', unbal:jv.unbalStartToJV, total:jv.totalStartToJV},
+    {key:'jv-to-start', label:'JV → START', pairs:jv.jvToStart, desc:'Amounts JV entities have extended to START', color:'#16a34a', bg:'#f0fdf4', unbal:jv.unbalJVToStart, total:jv.totalJVToStart},
+    {key:'jv-to-jv',    label:'JV ↔ JV',   pairs:jv.jvToJV,    desc:'Invoicing between JV entities — no START involvement', color:'#7c3aed', bg:'#f5f3ff', unbal:jv.unbalJVToJV, total:jv.totalJVToJV},
+  ];
+
+  const cur=sections.find(s=>s.key===ST.jvSection)||sections[0];
+  const detail=ST.jvSelectedPair?ST.pairs.find(p=>p.pair===ST.jvSelectedPair):null;
+
+  // Per-period totals for selected section
+  function sectionPeriodTotals(pairs){
+    const map={};
+    pairs.forEach(p=>{
+      ST.periods.forEach(per=>{
+        if(!map[per])map[per]={ar:0,ap:0};
+        map[per].ar+=(p.arByP[per]||0);
+        map[per].ap+=(p.apByP[per]||0);
+      });
+    });
+    return map;
+  }
+  const periodTotals=sectionPeriodTotals(cur.pairs);
+
+  return`
+  <!-- Section metric cards -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1rem">
+    ${sections.map(s=>`
+    <div class="metric" style="border-left:3px solid ${s.color};cursor:pointer;${ST.jvSection===s.key?`background:${s.bg};`:''}"
+      onclick="ST.jvSection='${s.key}';ST.jvSelectedPair=null;render()">
+      <div class="metric-label">${s.label}</div>
+      <div class="metric-val" style="color:${s.color}">${fmt(s.total)}</div>
+      <div style="font-size:11px;color:#666;margin-top:3px">${s.pairs.length} pairs · ${s.unbal>0?`<span style="color:#dc2626">${s.unbal} variance${s.unbal>1?'s':''}</span>`:'<span style="color:#16a34a">all balanced</span>'}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Section nav -->
+  <div style="display:flex;gap:6px;margin-bottom:1rem">
+    ${sections.map(s=>`<button class="tab ${ST.jvSection===s.key?'active':''}" style="border-color:${ST.jvSection===s.key?s.color:'#d4d4d4'}" onclick="ST.jvSection='${s.key}';ST.jvSelectedPair=null;render()">${s.label}</button>`).join('')}
+  </div>
+
+  <!-- Section description -->
+  <div style="font-size:12px;color:#666;margin-bottom:1rem;padding:8px 12px;background:${cur.bg};border-radius:8px;border-left:3px solid ${cur.color}">
+    ${cur.desc}
+  </div>
+
+  <!-- By period summary for this section -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">${cur.label} — by period</span>
+      <span style="font-size:12px;color:#666">${cur.pairs.length} pairs · ${fmt(cur.total)} total volume</span>
+    </div>
+    <div class="scroll-x"><table>
+      <thead><tr>
+        <th>Period</th>
+        <th class="num">AR total</th>
+        <th class="num">AP total</th>
+        <th class="num">Net</th>
+        <th>Balance</th>
+      </tr></thead>
+      <tbody>
+        ${ST.periods.map(per=>{
+          const pt=periodTotals[per]||{ar:0,ap:0};
+          const net=pt.ar-pt.ap;
+          const balanced=Math.abs(net)<0.02;
+          return`<tr>
+            <td style="font-weight:500">${per}</td>
+            <td class="num ok">${fmt(pt.ar)}</td>
+            <td class="num info">${fmt(pt.ap)}</td>
+            <td class="num" style="font-weight:600;color:${balanced?'#16a34a':Math.abs(net)>0?'#dc2626':'#888'}">${balanced?'—':fmtD(net)}</td>
+            <td>${balanced?'<span style="font-size:11px;color:#16a34a">✓ Balanced</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
+          </tr>`;
+        }).join('')}
+        <tr style="background:#f5f5f3;border-top:1.5px solid #d4d4d4;font-weight:600">
+          <td>Total</td>
+          <td class="num ok">${fmt(cur.pairs.reduce((s,p)=>s+p.arT,0))}</td>
+          <td class="num info">${fmt(cur.pairs.reduce((s,p)=>s+p.apT,0))}</td>
+          <td class="num" style="color:${cur.color}">${fmtD(cur.pairs.reduce((s,p)=>s+p.arT,0)-cur.pairs.reduce((s,p)=>s+p.apT,0))}</td>
+          <td>${cur.unbal>0?`<span style="font-size:11px;color:#dc2626">${cur.unbal} variance pair${cur.unbal>1?'s':''}</span>`:'<span style="font-size:11px;color:#16a34a">✓ All balanced</span>'}</td>
+        </tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- Pair list for this section -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">${cur.label} — all pairs</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn-green" onclick="exportExcel('jv')">⬇ Excel</button>
+        <button class="btn-blue"  onclick="exportPDF('jv')">⬇ PDF</button>
+      </div>
+    </div>
+    <div class="scroll-x"><table>
+      <thead><tr>
+        <th>Pair</th>
+        <th class="num">AR total</th>
+        <th class="num">AP total</th>
+        <th class="num">Variance</th>
+        <th>Status</th>
+        <th>Currencies</th>
+        <th>Descriptions</th>
+        <th class="num">Txns</th>
+      </tr></thead>
+      <tbody>
+        ${cur.pairs.length?cur.pairs.map(p=>`
+        <tr class="clickable ${ST.jvSelectedPair===p.pair?'selected':''}"
+          onclick="ST.jvSelectedPair=ST.jvSelectedPair===p.pair?null:p.pair;render();setTimeout(()=>{const el=document.getElementById('jv-drill');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},60)">
+          <td style="font-weight:500;min-width:180px">${esc(p.pair)}</td>
+          <td class="num ok">${fmt(p.arT)}</td>
+          <td class="num info">${fmt(p.apT)}</td>
+          <td class="num" style="font-weight:${p.balanced?400:600}">${fmtD(p.diff)}</td>
+          <td>${p.balanced?'<span style="font-size:11px;color:#16a34a">✓ Balanced</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
+          <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
+          <td class="muted" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.desc.join(', ')}</td>
+          <td class="num">${p.txs.length}</td>
+        </tr>`).join('')
+        :'<tr><td colspan="8" class="empty">No pairs in this section</td></tr>'}
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- Drill-down for selected pair -->
+  ${detail?`<div class="card" id="jv-drill" style="border:0.5px solid ${cur.color}">
+    <div class="card-head">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="card-title">${esc(detail.pair)}</span>
+        ${detail.per.map(p=>`<span class="pill">${p}</span>`).join('')}
+        ${detail.cur.map(c=>`<span class="pill">${c}</span>`).join('')}
+        <span style="font-size:11px;padding:2px 8px;border-radius:100px;background:${cur.bg};color:${cur.color};font-weight:500">${cur.label}</span>
+      </div>
+      <button class="btn" onclick="ST.jvSelectedPair=null;render()">✕</button>
+    </div>
+
+    ${detail.who.length?`<div style="padding:7px 14px;border-bottom:0.5px solid #e5e5e5;background:#fafafa;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <span style="font-size:11px;color:#888">Who owes who:</span>
+      ${[...new Set(detail.who)].map(w=>`<span class="pill" style="font-weight:500">${esc(w)}</span>`).join('')}
+    </div>`:''}
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:0.5px solid #e5e5e5">
+      ${[['AR total',fmt(detail.arT),'ok'],['AP total',fmt(detail.apT),'info'],['Variance',fmtD(detail.diff),detail.balanced?'ok':'warn'],['Transactions',detail.txs.length,'']].map(([l,v,c])=>`
+      <div style="padding:9px 14px;border-right:0.5px solid #e5e5e5">
+        <div style="font-size:11px;color:#888;margin-bottom:3px">${l}</div>
+        <div style="font-size:14px;font-weight:600" class="${c}">${v}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- By period -->
+    <div style="border-bottom:0.5px solid #e5e5e5" class="scroll-x"><table>
+      <thead><tr><th>Period</th><th class="num">AR</th><th class="num">AP</th><th class="num">Variance</th></tr></thead>
+      <tbody>${detail.per.map(per=>{
+        const ar=detail.arByP[per]||0,ap=detail.apByP[per]||0,d=ar-ap;
+        return`<tr>
+          <td><span class="pill">${per}</span></td>
+          <td class="num ok">${fmt(ar)}</td>
+          <td class="num info">${fmt(ap)}</td>
+          <td class="num" style="font-weight:${Math.abs(d)<0.02?400:600}">${fmtD(d)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+
+    <!-- Transactions -->
+    <div class="scroll-x scroll-y"><table>
+      <thead><tr><th>Side</th><th>Entity</th><th>Period</th><th>Type</th><th class="num">Amount</th><th>Curr</th><th>Memo</th><th>Doc #</th></tr></thead>
+      <tbody>${detail.txs.map(t=>`<tr style="background:${t.isAR?'#f0fdf4':'#eff6ff'}">
+        <td>${t.isAR?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>':'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}</td>
+        <td style="font-weight:500">${esc(t.sub)}</td><td>${esc(t.per)}</td><td>${esc(t.desc)}</td>
+        <td class="num">${fmt(t.amt)}</td><td>${esc(t.cur)}</td>
+        <td class="muted" style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.memo)}</td>
+        <td class="muted" style="font-size:11px">${esc(t.doc)}</td>
+      </tr>`).join('')}
+      ${detail.txs.length===0?'<tr><td colspan="8" class="empty">No transactions</td></tr>':''}</tbody>
+    </table></div>
+  </div>`:''}
+  `;
 }
 
 function renderSettlement(){
