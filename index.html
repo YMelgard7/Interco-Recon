@@ -252,7 +252,15 @@ async function processFile(file){
     }
     ST.uploadStatus='done';ST.uploadMsg='Saved!';ST.uploadProgress=100;render();
     await loadUpload(upload);
-  }catch(e){ST.uploadStatus='error';ST.uploadMsg='Error: '+e.message;render();}
+  }catch(e){
+    console.error('Upload error:', e);
+    ST.uploadStatus='error';
+    ST.uploadMsg='Upload failed: '+e.message;
+    ST.screen='upload';
+    try{ render(); } catch(_){
+      document.getElementById('root').innerHTML='<div class="app"><div class="loading" style="color:#dc2626"><b>Upload failed</b><br>'+e.message+'<br><br><button class="btn" onclick="location.reload()">Reload app</button></div></div>';
+    }
+  }
 }
 
 async function loadUpload(upload){
