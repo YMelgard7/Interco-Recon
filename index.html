@@ -30,7 +30,7 @@ tr.clickable{cursor:pointer}
 tr.clickable:hover td{background:#fafafa}
 tr.selected td{background:#f5f5f3!important}
 .num{text-align:right;font-variant-numeric:tabular-nums}
-.ok{color:#16a34a}.warn{color:#dc2626}.info{color:#2563eb}.amber{color:#d97706}.muted{color:#888}
+.ok{color:#16a34a}.warn{color:#dc2626}.info{color:#2563eb}.muted{color:#888}
 .scroll-x{overflow-x:auto}
 .scroll-y{overflow-y:auto;max-height:420px}
 .tabs{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
@@ -52,19 +52,25 @@ textarea{font-size:12px;padding:7px 9px;border-radius:7px;border:0.5px solid #d4
 .progress-fill{height:100%;background:#111;border-radius:4px;transition:width .25s}
 .hub-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
 @media(max-width:640px){.hub-row{grid-template-columns:1fr}}
-.tag-badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid transparent;cursor:pointer;white-space:nowrap}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto}
-.modal{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:520px;box-shadow:0 8px 40px rgba(0,0,0,.18);max-height:90vh;overflow-y:auto}
+.modal{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:460px;box-shadow:0 8px 40px rgba(0,0,0,.18);max-height:90vh;overflow-y:auto}
 .modal-title{font-size:15px;font-weight:500;margin-bottom:14px}
 .form-row{margin-bottom:12px}
 .form-label{font-size:11px;color:#666;margin-bottom:4px;display:block}
-.editable-cell{cursor:pointer;border-bottom:1px dashed #ccc;padding:2px 4px;border-radius:3px;display:inline-block;min-width:40px}
+.editable-cell{cursor:pointer;border-bottom:1px dashed #bbb;padding:1px 3px;border-radius:3px;display:inline-block;min-width:40px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .editable-cell:hover{background:#f0f9ff;border-color:#2563eb}
 .editable-cell.edited{background:#fef9c3;border-color:#ca8a04}
-.inline-edit{font-size:12px;padding:2px 5px;border-radius:4px;border:1px solid #2563eb;background:#fff;color:#111;width:100%;min-width:80px}
-.stmt-entity-head{background:#f0fdf4;border-left:3px solid #16a34a;padding:10px 14px;font-weight:500;font-size:13px;display:flex;justify-content:space-between;align-items:center}
-.stmt-section-head{background:#fafafa;padding:7px 14px;font-size:11px;font-weight:500;color:#666;text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid #e5e5e5}
+.inline-edit{font-size:12px;padding:2px 5px;border-radius:4px;border:1.5px solid #2563eb;background:#fff;color:#111;width:120px}
+.stmt-entity-head{background:#f0fdf4;border-left:3px solid #16a34a;padding:10px 14px;font-weight:500;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.stmt-section-head{background:#fafafa;padding:7px 14px;font-size:11px;font-weight:500;color:#666;text-transform:uppercase;letter-spacing:.04em;border-bottom:0.5px solid #e5e5e5}
 .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px}
+.dropdown-wrap{position:relative;display:inline-block}
+.dropdown-menu{display:none;position:absolute;right:0;top:110%;background:#fff;border:0.5px solid #e5e5e5;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:170px;padding:4px}
+.dropdown-menu.open{display:block}
+.dd-item{padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px;white-space:nowrap}
+.dd-item:hover{background:#f5f5f3}
+.incl{color:#16a34a;font-size:11px;font-weight:500}
+.excl{color:#dc2626;font-size:11px;font-weight:500}
 </style>
 </head>
 <body>
@@ -79,58 +85,56 @@ const api={
   patch:async(t,p,b)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json()},
   del:async(t,p)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text())}
 };
+
 const fmt=v=>'$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD=v=>{if(Math.abs(v)<0.02)return'<span class="ok">—</span>';return`<span class="warn">${v>0?'+':'-'}${fmt(v)}</span>`;};
 const isAR=r=>r.relationship&&(r.relationship.includes('A/R')||r.relationship.toLowerCase().includes('due from'));
 const PORD=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const sortP=(a,b)=>{const[am,ay]=a.split(' '),[bm,by]=b.split(' ');return ay!==by?Number(ay)-Number(by):PORD.indexOf(am)-PORD.indexOf(bm);};
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const TAG_DEFS=[
-  {tag:'Reviewed — no issues',bg:'#dcfce7',color:'#16a34a'},
-  {tag:'Cleared for payment',bg:'#dbeafe',color:'#2563eb'},
-  {tag:'Needs investigation',bg:'#fef3c7',color:'#d97706'},
-  {tag:'On hold',bg:'#ede9fe',color:'#7c3aed'},
-];
-function tagStyle(tag){const d=TAG_DEFS.find(t=>t.tag===tag);return d?`background:${d.bg};color:${d.color};border-color:${d.color}30`:'background:#f3f4f6;color:#374151;border-color:#d1d5db';}
 
-const EDITABLE_FIELDS=[
-  {key:'sub_name',label:'Sub Name',type:'text'},
-  {key:'relationship',label:'Relationship',type:'text'},
-  {key:'pair_key',label:'Pair Key',type:'text'},
-  {key:'amount',label:'Amount (FC)',type:'number'},
-  {key:'currency',label:'Currency',type:'text'},
-  {key:'period',label:'Period',type:'text'},
-  {key:'description',label:'Description',type:'text'},
-  {key:'who_owes_who',label:'Who Owes Who',type:'text'},
-  {key:'doc_number',label:'Doc #',type:'text'},
-  {key:'memo',label:'Memo',type:'text'},
-  {key:'site',label:'Site',type:'text'},
-  {key:'status',label:'Status',type:'text'},
-  {key:'name',label:'Name',type:'text'},
-  {key:'ic_name',label:'IC Name',type:'text'},
+// A-P = read-only (cols 1-16), Q-AB = editable (cols 17-28)
+const READONLY_COLS=[
+  {key:'subsidiary',    label:'A Subsidiary'},
+  {key:'internal_id',   label:'B Internal ID'},
+  {key:'tx_date',       label:'C Date'},
+  {key:'memo',          label:'D Memo (Main)'},
+  {key:'account',       label:'E Account'},
+  {key:'amount_functional', label:'F Amount'},
+  {key:'amount',        label:'G Amt (FC)'},
+  {key:'doc_number',    label:'H Doc Number'},
+  {key:'name',          label:'I Name'},
+  {key:'tx_type',       label:'J Type'},
+  {key:'site',          label:'K Site'},
+  {key:'currency',      label:'L Currency'},
+  {key:'status',        label:'M Status'},
+  {key:'period',        label:'N Period'},
+  {key:'status2',       label:'O Status2'},
+  {key:'memo2',         label:'P Memo'},
 ];
-const READONLY_FIELDS=[
-  {key:'subsidiary',label:'Subsidiary'},
-  {key:'internal_id',label:'Internal ID'},
-  {key:'relationship_group',label:'Rel Group'},
-  {key:'net_ic_balance',label:'Net I/C Bal'},
-  {key:'tx_date',label:'Date'},
-  {key:'memo2',label:'Memo 2'},
-  {key:'amount_functional',label:'Amt (Func)'},
-  {key:'currency_type',label:'Currency Type'},
-  {key:'tx_type',label:'Type'},
-  {key:'status2',label:'Status 2'},
+const EDITABLE_COLS=[
+  {key:'sub_name',           label:'Q Sub Name',          type:'text'},
+  {key:'relationship',       label:'R Relationship',       type:'text'},
+  {key:'relationship_group', label:'S Rel Group',          type:'text'},
+  {key:'pair_key',           label:'T Pair Key',           type:'text'},
+  {key:'net_ic_balance',     label:'U Net I/C Balance',    type:'number'},
+  {key:'ic_name',            label:'V IC Name',            type:'text'},
+  {key:'who_owes_who',       label:'W Who Owes Who',       type:'text'},
+  {key:'who_owes',           label:'X Who Owes',           type:'text'},
+  {key:'who_is_owed',        label:'Y Who Is Owed',        type:'text'},
+  {key:'include_exclude',    label:'Z Include/Exclude',    type:'select',options:['Include','Exclude']},
+  {key:'description',        label:'AA Description',       type:'text'},
+  {key:'column1',            label:'AB Column1',           type:'text'},
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
-  pairTags:{},txTags:{},tagsConfig:[],
   view:'hub',statusFilter:'all',search:'',
-  selectedPair:null,txPeriod:'',txDesc:'',txSide:'',txTagFilter:'',
+  selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,
-  rawSearch:'',rawPair:'',rawPeriod:'',rawPage:0,
-  editingCell:null, // {id, field}
+  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,
+  editingCell:null,
   modal:null,
   uploadStatus:null,uploadMsg:'',uploadProgress:0,
 };
@@ -138,7 +142,7 @@ const PAGE_SIZE=100;
 
 function aggregate(rows){
   const map={};
-  rows.forEach(r=>{
+  rows.filter(r=>!r.include_exclude||r.include_exclude==='Include').forEach(r=>{
     const pair=r.pair_key||'';if(!pair)return;
     if(!map[pair])map[pair]={pair,arByP:{},apByP:{},cur:new Set(),desc:new Set(),per:new Set(),txs:[],who:new Set()};
     const p=map[pair],amt=parseFloat(r.amount)||0;
@@ -148,8 +152,7 @@ function aggregate(rows){
     else       p.apByP[r.period]=(p.apByP[r.period]||0)+amt;
     p.txs.push({id:r.id,sub:r.sub_name,rel:r.relationship,amt,desc:r.description,per:r.period,
       cur:r.currency,who:r.who_owes_who,doc:r.doc_number,memo:(r.memo||'').slice(0,80),
-      isAR:isAR(r),tag:r.tag,tag_note:r.tag_note,tagged_by:r.tagged_by,
-      edited:r.edited_by?true:false});
+      isAR:isAR(r),edited:!!r.edited_by});
   });
   ST.pairs=Object.values(map).map(p=>{
     const arT=Object.values(p.arByP).reduce((s,v)=>s+v,0);
@@ -177,7 +180,10 @@ function buildHub(){
   });
   const incoming=Object.values(subs).filter(s=>s.netVsStart>0.02).sort((a,b)=>b.netVsStart-a.netVsStart);
   const outgoing=Object.values(subs).filter(s=>s.netVsStart<-0.02).sort((a,b)=>a.netVsStart-b.netVsStart);
-  return{incoming,outgoing,totalIn:incoming.reduce((s,e)=>s+e.netVsStart,0),totalOut:outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0),net:incoming.reduce((s,e)=>s+e.netVsStart,0)-outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0)};
+  return{incoming,outgoing,
+    totalIn:incoming.reduce((s,e)=>s+e.netVsStart,0),
+    totalOut:outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0),
+    net:incoming.reduce((s,e)=>s+e.netVsStart,0)-outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0)};
 }
 
 function filtered(){return ST.pairs.filter(p=>{
@@ -199,7 +205,8 @@ async function processFile(file){
   try{
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:'array',cellDates:true});
-    const sn=wb.SheetNames.find(n=>n.toLowerCase().includes('interco')&&n.toLowerCase().includes('result'))||wb.SheetNames[0];
+    // prefer RAW DATA sheet, fall back to IntercoReconTransactionsResult
+    const sn=wb.SheetNames.find(n=>n==='RAW DATA')||wb.SheetNames.find(n=>n.toLowerCase().includes('interco')&&n.toLowerCase().includes('result'))||wb.SheetNames[0];
     const raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});
     ST.uploadStatus='saving';ST.uploadMsg=`Saving ${raw.length.toLocaleString()} rows…`;ST.uploadProgress=30;render();
     const periods=[...new Set(raw.map(r=>String(r['Period']||'')).filter(Boolean))];
@@ -208,30 +215,36 @@ async function processFile(file){
     for(let i=0;i<raw.length;i+=BATCH){
       await api.post('transactions',raw.slice(i,i+BATCH).map(r=>({
         upload_id:upload.id,
-        pair_key:String(r['Pair Key']||'').trim(),
-        sub_name:String(r['Sub Name']||'').trim(),
-        relationship:String(r['Relationship']||'').trim(),
-        amount:parseFloat(r['Amount (Foreign Currency)'])||0,
+        // read-only cols A-P
+        subsidiary:       String(r['Subsidiary']||'').slice(0,200),
+        internal_id:      String(r['Internal ID']||''),
+        tx_date:          String(r['Date']||'').slice(0,20),
+        memo:             String(r['Memo (Main)']||'').slice(0,120),
+        account:          String(r['Account']||'').slice(0,200),
         amount_functional:parseFloat(r['Amount'])||0,
-        currency:String(r['Currency']||'').trim(),
-        currency_type:String(r['Currency Type']||'').trim(),
-        period:String(r['Period']||'').trim(),
-        description:String(r['Description']||'').trim(),
-        who_owes_who:String(r['Who Owes Who']||'').trim(),
-        doc_number:String(r['Document Number']||'').trim(),
-        memo:String(r['Memo (Main)']||'').slice(0,120),
-        memo2:String(r['Memo (Main)2']||'').slice(0,120),
-        subsidiary:String(r['Subsidiary']||'').slice(0,200),
-        internal_id:String(r['Internal ID']||''),
-        relationship_group:String(r['Relationship Group']||''),
-        net_ic_balance:parseFloat(r['Net I/C Balance'])||0,
-        tx_date:String(r['Date']||'').slice(0,20),
-        name:String(r['Name']||'').slice(0,120),
-        ic_name:String(r['IC Name']||'').trim(),
-        tx_type:String(r['Type']||'').trim(),
-        site:String(r['Site']||'').slice(0,120),
-        status:String(r['Status']||'').trim(),
-        status2:String(r['Status2']||'').trim(),
+        amount:           parseFloat(r['Amount (Foreign Currency)'])||0,
+        doc_number:       String(r['Document Number']||'').trim(),
+        name:             String(r['Name']||'').slice(0,120),
+        tx_type:          String(r['Type']||'').trim(),
+        site:             String(r['Site']||'').slice(0,120),
+        currency:         String(r['Currency']||'').trim(),
+        status:           String(r['Status']||'').trim(),
+        period:           String(r['Period']||'').trim(),
+        status2:          String(r['Status2']||'').trim(),
+        memo2:            String(r['Memo']||'').slice(0,120),
+        // editable cols Q-AB
+        sub_name:          String(r['Sub Name']||'').trim(),
+        relationship:      String(r['Relationship']||'').trim(),
+        relationship_group:String(r['Relationship Group']||'').trim(),
+        pair_key:          String(r['Pair Key']||'').trim(),
+        net_ic_balance:    parseFloat(r['Net I/C Balance'])||0,
+        ic_name:           String(r['IC Name']||'').trim(),
+        who_owes_who:      String(r['Who Owes Who']||'').trim(),
+        who_owes:          String(r['Who Owes']||'').trim(),
+        who_is_owed:       String(r['Who is Owed']||'').trim(),
+        include_exclude:   String(r['Include/Exclude']||'Include').trim(),
+        description:       String(r['Description']||'').trim(),
+        column1:           String(r['Column1']||'').trim(),
       })));
       ST.uploadProgress=30+Math.round((i/raw.length)*62);
       ST.uploadMsg=`Saving rows ${i+1}–${Math.min(i+BATCH,raw.length)} of ${raw.length.toLocaleString()}…`;
@@ -245,15 +258,8 @@ async function processFile(file){
 async function loadUpload(upload){
   ST.current=upload;
   document.getElementById('root').innerHTML=`<div class="app"><div class="loading"><span class="spin"></span>Loading ${esc(upload.file_name)}…</div></div>`;
-  const[rows,pairTagRows,tagsConfig]=await Promise.all([
-    api.get('transactions',`upload_id=eq.${upload.id}&order=period.asc&limit=9999`),
-    api.get('pair_tags',`upload_id=eq.${upload.id}`),
-    api.get('tags_config','order=sort_order.asc'),
-  ]);
-  ST.rows=rows;ST.tagsConfig=tagsConfig;
-  ST.pairTags={};pairTagRows.forEach(t=>ST.pairTags[t.pair_key]=t);
-  ST.txTags={};rows.forEach(r=>{if(r.tag)ST.txTags[r.id]={tag:r.tag,note:r.tag_note,by:r.tagged_by};});
-  aggregate(rows);
+  ST.rows=await api.get('transactions',`upload_id=eq.${upload.id}&order=period.asc&limit=9999`);
+  aggregate(ST.rows);
   ST.screen='dashboard';ST.view='hub';ST.selectedPair=null;ST.search='';ST.statusFilter='all';ST.rawPage=0;
   render();
 }
@@ -270,10 +276,9 @@ async function init(){
 
 // ── INLINE EDIT ─────────────────────────────────────────────────────────────
 function startEdit(id,field,e){
-  e.stopPropagation();
-  ST.editingCell={id,field};
-  render();
-  setTimeout(()=>{const inp=document.getElementById('ie-'+id+'-'+field);if(inp){inp.focus();inp.select();}},30);
+  if(e)e.stopPropagation();
+  ST.editingCell={id,field};render();
+  setTimeout(()=>{const inp=document.getElementById('ie-'+id+'-'+field);if(inp){inp.focus();if(inp.select)inp.select();}},30);
 }
 
 async function commitEdit(id,field){
@@ -281,14 +286,13 @@ async function commitEdit(id,field){
   if(!inp)return;
   const val=inp.value;
   const row=ST.rows.find(r=>r.id===id);
-  if(!row||String(row[field]||'')==val){ST.editingCell=null;render();return;}
-  row[field]=field==='amount'?parseFloat(val)||0:val;
-  row.edited_by=row.edited_by||'team';
-  row.edited_at=new Date().toISOString();
-  await api.patch('transactions',`id=eq.${id}`,{[field]:row[field],edited_by:'team',edited_at:row.edited_at});
-  ST.editingCell=null;
-  aggregate(ST.rows);
-  render();
+  if(!row){ST.editingCell=null;render();return;}
+  const fdef=EDITABLE_COLS.find(f=>f.key===field);
+  const newVal=fdef?.type==='number'?parseFloat(val)||0:val;
+  if(String(row[field]||'')==String(newVal)){ST.editingCell=null;render();return;}
+  row[field]=newVal;row.edited_by='team';row.edited_at=new Date().toISOString();
+  await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:'team',edited_at:row.edited_at});
+  ST.editingCell=null;aggregate(ST.rows);render();
 }
 
 function cancelEdit(){ST.editingCell=null;render();}
@@ -296,82 +300,51 @@ function cancelEdit(){ST.editingCell=null;render();}
 function editableCell(row,field,val){
   const id=row.id;
   const isEditing=ST.editingCell&&ST.editingCell.id===id&&ST.editingCell.field===field;
-  const isEdited=row.edited_by&&row[field]!==undefined;
+  const isEdited=!!row.edited_by;
+  const fdef=EDITABLE_COLS.find(f=>f.key===field);
   if(isEditing){
-    const fdef=EDITABLE_FIELDS.find(f=>f.key===field);
+    if(fdef?.type==='select'){
+      return`<select class="inline-edit" id="ie-${id}-${field}"
+        onchange="commitEdit('${id}','${field}')"
+        onblur="commitEdit('${id}','${field}')"
+        onkeydown="if(event.key==='Escape')cancelEdit()">
+        ${(fdef.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}
+      </select>`;
+    }
     return`<input class="inline-edit" id="ie-${id}-${field}" type="${fdef?.type||'text'}" value="${esc(val)}"
       onblur="commitEdit('${id}','${field}')"
-      onkeydown="if(event.key==='Enter')commitEdit('${id}','${field}');if(event.key==='Escape')cancelEdit()">`;
+      onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelEdit()">`;
   }
-  return`<span class="editable-cell ${isEdited?'edited':''}" onclick="startEdit('${id}','${field}',event)" title="Click to edit">${esc(val)||'&nbsp;'}</span>`;
+  const display=field==='include_exclude'
+    ?`<span class="${val==='Exclude'?'excl':'incl'}">${esc(val||'Include')}</span>`
+    :`<span class="editable-cell ${isEdited?'edited':''}" title="Click to edit">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
+  return`<span onclick="startEdit('${id}','${field}',event)">${display}</span>`;
 }
 
-// ── TAGGING ─────────────────────────────────────────────────────────────────
-async function saveTag(){
-  const m=ST.modal;
-  const tagger=document.getElementById('tagger-name')?.value||'';
-  const tag=document.getElementById('tag-select')?.value||'';
-  const note=document.getElementById('tag-note')?.value||'';
-  if(!tag)return;
-  if(m.type==='pair'){
-    const ex=ST.pairTags[m.target];
-    if(ex){await api.patch('pair_tags',`id=eq.${ex.id}`,{tag,tag_note:note,tagged_by:tagger,updated_at:new Date().toISOString()});ST.pairTags[m.target]={...ex,tag,tag_note:note,tagged_by:tagger};}
-    else{const[row]=await api.post('pair_tags',{upload_id:ST.current.id,pair_key:m.target,tag,tag_note:note,tagged_by:tagger});ST.pairTags[m.target]=row;}
-  }else{
-    await api.patch('transactions',`id=eq.${m.target}`,{tag,tag_note:note,tagged_by:tagger,tagged_at:new Date().toISOString()});
-    ST.txTags[m.target]={tag,note,by:tagger};
-    const tx=ST.pairs.flatMap(p=>p.txs).find(t=>t.id===m.target);
-    if(tx){tx.tag=tag;tx.tag_note=note;tx.tagged_by=tagger;}
-  }
-  ST.modal=null;render();
-}
-async function clearTag(){
-  const m=ST.modal;
-  if(m.type==='pair'&&ST.pairTags[m.target]){await api.patch('pair_tags',`id=eq.${ST.pairTags[m.target].id}`,{tag:null,tag_note:null});delete ST.pairTags[m.target];}
-  else if(m.type==='tx'){await api.patch('transactions',`id=eq.${m.target}`,{tag:null,tag_note:null,tagged_by:null});delete ST.txTags[m.target];const tx=ST.pairs.flatMap(p=>p.txs).find(t=>t.id===m.target);if(tx){tx.tag=null;tx.tag_note=null;}}
-  ST.modal=null;render();
-}
-async function addCustomTag(){
-  const val=document.getElementById('custom-tag-input')?.value?.trim();if(!val)return;
-  await api.post('tags_config',{tag:val,color:'#374151',sort_order:99});
-  ST.tagsConfig=await api.get('tags_config','order=sort_order.asc');
-  document.getElementById('custom-tag-input').value='';
-  document.getElementById('tag-select').innerHTML=tagOptions();
-}
-function tagOptions(sel=''){
-  const base=TAG_DEFS.map(t=>`<option value="${esc(t.tag)}" ${sel===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('');
-  const custom=ST.tagsConfig.filter(t=>!TAG_DEFS.find(d=>d.tag===t.tag)).map(t=>`<option value="${esc(t.tag)}" ${sel===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('');
-  return`<option value="">Select a tag…</option>${base}${custom?'<option disabled>──────</option>'+custom:''}`;
-}
-function pairTagBadge(pk){const pt=ST.pairTags[pk];if(!pt||!pt.tag)return`<button class="btn-sm" onclick="ST.modal={type:'pair',target:'${esc(pk)}',existing:null};render();event.stopPropagation()">+ Tag</button>`;
-  return`<span class="tag-badge" style="${tagStyle(pt.tag)}" onclick="ST.modal={type:'pair',target:'${esc(pk)}',existing:ST.pairTags['${esc(pk)}']};render();event.stopPropagation()" title="${pt.tagged_by||''}">${esc(pt.tag)}</span>`;}
-function txTagBadge(tx){if(!tx.tag)return`<button class="btn-sm" onclick="ST.modal={type:'tx',target:'${tx.id}',existing:null};render();event.stopPropagation()">+ Tag</button>`;
-  return`<span class="tag-badge" style="${tagStyle(tx.tag)}" onclick="ST.modal={type:'tx',target:'${tx.id}',existing:{tag:tx.tag,note:tx.tag_note,by:tx.tagged_by}};render();event.stopPropagation()" title="${tx.tagged_by||''}">${esc(tx.tag)}</span>`;}
-
-// ── EXPORT ──────────────────────────────────────────────────────────────────
+// ── EXPORT ───────────────────────────────────────────────────────────────────
 function exportExcel(type){
   const wb=XLSX.utils.book_new();
+  const allCols=[...READONLY_COLS,...EDITABLE_COLS];
   if(type==='raw'||type==='all'){
-    const headers=['Pair Key','Sub Name','Relationship','Amount','Currency','Period','Description','Who Owes Who','Doc #','Memo','Site','Status','Tag','Tag Note','Edited By','Subsidiary','Internal ID','Date','Type'];
-    const rows=ST.rows.map(r=>[r.pair_key,r.sub_name,r.relationship,r.amount,r.currency,r.period,r.description,r.who_owes_who,r.doc_number,r.memo,r.site,r.status,r.tag||'',r.tag_note||'',r.edited_by||'',r.subsidiary,r.internal_id,r.tx_date,r.tx_type]);
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([headers,...rows]),'Transactions');
+    const hdr=allCols.map(c=>c.label);
+    const rows=ST.rows.map(r=>allCols.map(c=>r[c.key]??''));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'RAW DATA');
   }
   if(type==='summary'||type==='all'){
-    const hdr=['Pair Key','AR Total','AP Total','Variance','Status','Currencies','Tag'];
-    const rows=ST.pairs.map(p=>[p.pair,p.arT,p.apT,p.diff,p.balanced?'Balanced':'Variance',p.cur.join(','),(ST.pairTags[p.pair]?.tag)||'']);
+    const hdr=['Pair Key','AR Total','AP Total','Variance','Status','Currencies'];
+    const rows=ST.pairs.map(p=>[p.pair,p.arT,p.apT,p.diff,p.balanced?'Balanced':'Variance',p.cur.join(',')]);
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'Pair Summary');
   }
   if(type==='stmt'||type==='all'){
     const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
     entities.forEach(entity=>{
       const txs=ST.rows.filter(r=>r.sub_name===entity);
-      const hdr=['Pair Key','Relationship','Amount','Currency','Period','Description','Doc #','Memo'];
-      const rows=txs.map(r=>[r.pair_key,r.relationship,r.amount,r.currency,r.period,r.description,r.doc_number,r.memo]);
       const arT=txs.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
       const apT=txs.filter(r=>!isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
-      const sheet=XLSX.utils.aoa_to_sheet([[`Statement: ${entity}`],['AR Total',arT],['AP Total',apT],['Net',arT-apT],[],[...hdr],...rows]);
-      const safeName=entity.replace(/[\\/*?[\]]/g,'').slice(0,28);
-      XLSX.utils.book_append_sheet(wb,sheet,safeName);
+      const hdr=['Pair Key','Relationship','Amount','Currency','Period','Description','Doc #','Memo','Who Owes Who'];
+      const rows=txs.map(r=>[r.pair_key,r.relationship,r.amount,r.currency,r.period,r.description,r.doc_number,r.memo,r.who_owes_who]);
+      const ws=XLSX.utils.aoa_to_sheet([[`Statement: ${entity}`],['AR Total',arT],['AP Total',apT],['Net',arT-apT],[],[...hdr],...rows]);
+      XLSX.utils.book_append_sheet(wb,ws,entity.replace(/[\\/*?[\]]/g,'').slice(0,28));
     });
   }
   if(type==='hub'||type==='all'){
@@ -381,68 +354,72 @@ function exportExcel(type){
       ...hub.outgoing.map(e=>['Outgoing',e.entity,Math.abs(e.netVsStart),e.pairs.every(p=>p.balanced)?'Yes':'No'])];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'START Hub');
   }
-  XLSX.writeFile(wb,`IntercoRecon_${ST.current?.file_name?.replace('.xlsx','')||'export'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb,`IntercoRecon_${new Date().toISOString().slice(0,10)}.xlsx`);
+  closeDropdown();
 }
 
 function exportPDF(type){
   const hub=buildHub();
   let html=`<html><head><style>
-    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px}
-    h1{font-size:16px;margin-bottom:4px}
-    h2{font-size:13px;margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px}
-    h3{font-size:12px;margin:12px 0 4px;color:#333}
-    table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:10px}
-    th{background:#f0f0f0;padding:4px 6px;border:0.5px solid #ccc;text-align:left;font-weight:600}
-    td{padding:4px 6px;border:0.5px solid #e5e5e5}
+    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:16px}
+    h1{font-size:15px;margin-bottom:4px}h2{font-size:12px;margin:14px 0 5px;border-bottom:1px solid #ccc;padding-bottom:3px}
+    h3{font-size:11px;margin:10px 0 3px;color:#333}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9px}
+    th{background:#f0f0f0;padding:3px 5px;border:0.5px solid #ccc;text-align:left;font-weight:600}
+    td{padding:3px 5px;border:0.5px solid #e5e5e5}
     .ok{color:#16a34a}.warn{color:#dc2626}.info{color:#2563eb}
-    .section{background:#f9fafb;padding:6px 10px;margin:8px 0;border-left:3px solid #16a34a}
+    .box{background:#f9fafb;padding:5px 9px;margin:6px 0;border-left:3px solid #16a34a;display:inline-block;margin-right:12px}
     @media print{body{padding:0}}</style></head><body>
-    <h1>Intercompany Recon Report</h1>
-    <p style="color:#666;margin-bottom:16px">File: ${esc(ST.current?.file_name||'')} · Generated: ${new Date().toLocaleDateString()} · Periods: ${ST.periods.join(', ')}</p>`;
-
+    <h1>Intercompany Recon Report — Evolve2Impact</h1>
+    <p style="color:#666;margin-bottom:12px">File: ${esc(ST.current?.file_name||'')} · Generated: ${new Date().toLocaleDateString()} · Periods: ${ST.periods.join(', ')}</p>`;
   if(type==='hub'||type==='all'){
-    html+=`<h2>START Hub Summary</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-      <div class="section"><b>Total Incoming to START:</b> <span class="ok">$${hub.totalIn.toLocaleString('en-US',{minimumFractionDigits:2})}</span></div>
-      <div class="section"><b>Total Outgoing from START:</b> <span class="warn">$${hub.totalOut.toLocaleString('en-US',{minimumFractionDigits:2})}</span></div>
-    </div>
-    <h3>Incoming (owe START)</h3>
-    <table><tr><th>Entity</th><th>Net vs START</th><th>Status</th></tr>
-    ${hub.incoming.map(e=>`<tr><td>${esc(e.entity)}</td><td class="ok">$${e.netVsStart.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${e.pairs.every(p=>p.balanced)?'Balanced':'Variance'}</td></tr>`).join('')}
-    </table>
-    <h3>Outgoing (START owes)</h3>
-    <table><tr><th>Entity</th><th>START Owes</th><th>Status</th></tr>
-    ${hub.outgoing.map(e=>`<tr><td>${esc(e.entity)}</td><td class="warn">$${Math.abs(e.netVsStart).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${e.pairs.every(p=>p.balanced)?'Balanced':'Variance'}</td></tr>`).join('')}
-    </table>`;
+    html+=`<h2>START Hub</h2>
+    <span class="box">Flowing in: <b class="ok">$${hub.totalIn.toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+    <span class="box">Flowing out: <b class="warn">$${hub.totalOut.toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+    <span class="box">Net: <b class="${hub.net>=0?'ok':'warn'}">$${hub.net.toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+    <h3>Incoming</h3><table><tr><th>Entity</th><th>Net vs START</th><th>Status</th></tr>
+    ${hub.incoming.map(e=>`<tr><td>${esc(e.entity)}</td><td class="ok">$${e.netVsStart.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${e.pairs.every(p=>p.balanced)?'Balanced':'Variance'}</td></tr>`).join('')}</table>
+    <h3>Outgoing</h3><table><tr><th>Entity</th><th>START Owes</th><th>Status</th></tr>
+    ${hub.outgoing.map(e=>`<tr><td>${esc(e.entity)}</td><td class="warn">$${Math.abs(e.netVsStart).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${e.pairs.every(p=>p.balanced)?'Balanced':'Variance'}</td></tr>`).join('')}</table>`;
   }
-
   if(type==='summary'||type==='all'){
-    html+=`<h2>Pair Summary</h2>
-    <table><tr><th>Pair</th><th>AR Total</th><th>AP Total</th><th>Variance</th><th>Status</th><th>Tag</th></tr>
-    ${ST.pairs.map(p=>`<tr><td>${esc(p.pair)}</td><td class="ok">$${p.arT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="info">$${p.apT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="${p.balanced?'ok':'warn'}">${p.balanced?'—':'$'+Math.abs(p.diff).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${p.balanced?'Balanced':'Variance'}</td><td>${esc(ST.pairTags[p.pair]?.tag||'')}</td></tr>`).join('')}
-    </table>`;
+    html+=`<h2>Pair Summary</h2><table><tr><th>Pair</th><th>AR</th><th>AP</th><th>Variance</th><th>Status</th></tr>
+    ${ST.pairs.map(p=>`<tr><td>${esc(p.pair)}</td><td class="ok">$${p.arT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="info">$${p.apT.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td class="${p.balanced?'ok':'warn'}">${p.balanced?'—':'$'+Math.abs(p.diff).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${p.balanced?'Balanced':'Variance'}</td></tr>`).join('')}</table>`;
   }
-
   if(type==='stmt'||type==='all'){
     const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
-    html+=`<h2>Entity Statements</h2>`;
-    entities.forEach(entity=>{
-      const txs=ST.rows.filter(r=>r.sub_name===entity);
+    if(ST.stmtEntity){
+      const txs=ST.rows.filter(r=>r.sub_name===ST.stmtEntity);
       const arT=txs.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
       const apT=txs.filter(r=>!isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
-      html+=`<h3>${esc(entity)} — AR: $${arT.toLocaleString('en-US',{minimumFractionDigits:2})} | AP: $${apT.toLocaleString('en-US',{minimumFractionDigits:2})} | Net: $${(arT-apT).toLocaleString('en-US',{minimumFractionDigits:2})}</h3>
-      <table><tr><th>Pair</th><th>Rel</th><th>Amount</th><th>Currency</th><th>Period</th><th>Description</th><th>Doc #</th></tr>
-      ${txs.map(r=>`<tr><td>${esc(r.pair_key)}</td><td>${esc(r.relationship)}</td><td class="${isAR(r)?'ok':'info'}">$${(parseFloat(r.amount)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${esc(r.currency)}</td><td>${esc(r.period)}</td><td>${esc(r.description)}</td><td>${esc(r.doc_number)}</td></tr>`).join('')}
-      </table>`;
-    });
+      html+=`<h2>Statement: ${esc(ST.stmtEntity)}</h2>
+      <span class="box">AR: <b class="ok">$${arT.toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+      <span class="box">AP: <b class="info">$${apT.toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+      <span class="box">Net: <b class="${arT-apT>=0?'ok':'warn'}">$${(arT-apT).toLocaleString('en-US',{minimumFractionDigits:2})}</b></span>
+      <table><tr><th>Pair</th><th>Rel</th><th>Amount</th><th>Curr</th><th>Period</th><th>Desc</th><th>Doc #</th><th>Memo</th><th>Who Owes Who</th></tr>
+      ${txs.map(r=>`<tr><td>${esc(r.pair_key)}</td><td>${esc(r.relationship)}</td><td class="${isAR(r)?'ok':'info'}">$${(parseFloat(r.amount)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${esc(r.currency)}</td><td>${esc(r.period)}</td><td>${esc(r.description)}</td><td>${esc(r.doc_number)}</td><td>${esc(r.memo)}</td><td>${esc(r.who_owes_who)}</td></tr>`).join('')}</table>`;
+    } else {
+      entities.forEach(entity=>{
+        const txs=ST.rows.filter(r=>r.sub_name===entity);
+        const arT=txs.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        const apT=txs.filter(r=>!isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        html+=`<h3>${esc(entity)} — AR: $${arT.toLocaleString('en-US',{minimumFractionDigits:2})} | AP: $${apT.toLocaleString('en-US',{minimumFractionDigits:2})} | Net: $${(arT-apT).toLocaleString('en-US',{minimumFractionDigits:2})}</h3>
+        <table><tr><th>Pair</th><th>Rel</th><th>Amount</th><th>Curr</th><th>Period</th><th>Desc</th><th>Doc #</th></tr>
+        ${txs.map(r=>`<tr><td>${esc(r.pair_key)}</td><td>${esc(r.relationship)}</td><td>$${(parseFloat(r.amount)||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td>${esc(r.currency)}</td><td>${esc(r.period)}</td><td>${esc(r.description)}</td><td>${esc(r.doc_number)}</td></tr>`).join('')}</table>`;
+      });
+    }
   }
   html+=`</body></html>`;
-  const w=window.open('','_blank');
-  w.document.write(html);w.document.close();
+  const w=window.open('','_blank');w.document.write(html);w.document.close();
   setTimeout(()=>w.print(),400);
+  closeDropdown();
 }
 
-// ── RENDER ─────────────────────────────────────────────────────────────────
+function closeDropdown(){document.querySelectorAll('.dropdown-menu').forEach(m=>m.classList.remove('open'));}
+function toggleDd(id){const m=document.getElementById(id);document.querySelectorAll('.dropdown-menu').forEach(x=>{if(x.id!==id)x.classList.remove('open');});m.classList.toggle('open');}
+document.addEventListener('click',e=>{if(!e.target.closest('.dropdown-wrap'))closeDropdown();});
+
+// ── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
   const root=document.getElementById('root');
   if(ST.screen==='upload'){root.innerHTML=`<div class="app">${renderUpload()}</div>`;return;}
@@ -455,15 +432,15 @@ function renderUpload(){
   const colors={error:'#dc2626',done:'#16a34a'};
   return`<div class="upload-wrap">
     <div style="margin-bottom:1.5rem"><div style="font-size:22px;font-weight:500;margin-bottom:5px">Interco Recon</div>
-    <div style="font-size:13px;color:#666">Evolve2Impact Group · Upload your NetSuite IC export</div></div>
-    <div class="drop-zone ${ST.uploadStatus?'uploading':''}" id="dz"
+    <div style="font-size:13px;color:#666">Evolve2Impact Group</div></div>
+    <div class="drop-zone" id="dz"
       onclick="${!ST.uploadStatus?"document.getElementById('fi').click()":''}"
       ondragover="event.preventDefault();this.classList.add('drag')"
       ondragleave="this.classList.remove('drag')"
       ondrop="event.preventDefault();this.classList.remove('drag');handleDrop(event)">
       <div style="font-size:32px;margin-bottom:10px">${icons[ST.uploadStatus]||'📂'}</div>
-      <div style="font-size:14px;font-weight:500;color:${colors[ST.uploadStatus]||'#111'};margin-bottom:5px">${ST.uploadStatus?ST.uploadMsg:'Drop your .xlsx here'}</div>
-      <div style="font-size:12px;color:#888">${!ST.uploadStatus?'or click to browse':'&nbsp;'}</div>
+      <div style="font-size:14px;font-weight:500;color:${colors[ST.uploadStatus]||'#111'};margin-bottom:5px">${ST.uploadStatus?ST.uploadMsg:'Drop your .xlsx file here'}</div>
+      <div style="font-size:12px;color:#888">${!ST.uploadStatus?'Reads RAW DATA sheet automatically':'&nbsp;'}</div>
       ${ST.uploadStatus&&ST.uploadStatus!=='error'&&ST.uploadStatus!=='done'?`<div class="progress-bar"><div class="progress-fill" style="width:${ST.uploadProgress}%"></div></div>`:''}
     </div>
     <input id="fi" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handlePick(this)">
@@ -488,25 +465,25 @@ function renderDashboard(){
   return`
   <div class="header">
     <div><div style="font-size:18px;font-weight:500;margin-bottom:2px">Interco Recon</div>
-    <div style="font-size:12px;color:#666">${esc(u?.file_name||'')} · ${ST.rows.length.toLocaleString()} transactions · ${ST.pairs.length} pairs · ${ST.periods.join(', ')}</div></div>
+    <div style="font-size:12px;color:#666">${esc(u?.file_name||'')} · ${ST.rows.length.toLocaleString()} rows · ${ST.pairs.length} pairs · ${ST.periods.join(', ')}</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div style="position:relative;display:inline-block">
-        <button class="btn-green" onclick="document.getElementById('xl-menu').style.display=document.getElementById('xl-menu').style.display==='block'?'none':'block'">⬇ Excel</button>
-        <div id="xl-menu" style="display:none;position:absolute;right:0;top:110%;background:#fff;border:0.5px solid #e5e5e5;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:160px;padding:4px">
-          <div onclick="exportExcel('all');document.getElementById('xl-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Full export (all tabs)</div>
-          <div onclick="exportExcel('summary');document.getElementById('xl-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Pair summary only</div>
-          <div onclick="exportExcel('raw');document.getElementById('xl-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Raw transactions</div>
-          <div onclick="exportExcel('stmt');document.getElementById('xl-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Entity statements</div>
-          <div onclick="exportExcel('hub');document.getElementById('xl-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">START Hub</div>
+      <div class="dropdown-wrap">
+        <button class="btn-green" onclick="toggleDd('xl-dd')">⬇ Excel</button>
+        <div class="dropdown-menu" id="xl-dd">
+          <div class="dd-item" onclick="exportExcel('all')">Full export (all tabs)</div>
+          <div class="dd-item" onclick="exportExcel('raw')">RAW DATA</div>
+          <div class="dd-item" onclick="exportExcel('summary')">Pair summary</div>
+          <div class="dd-item" onclick="exportExcel('stmt')">Entity statements</div>
+          <div class="dd-item" onclick="exportExcel('hub')">START Hub</div>
         </div>
       </div>
-      <div style="position:relative;display:inline-block">
-        <button class="btn-blue" onclick="document.getElementById('pdf-menu').style.display=document.getElementById('pdf-menu').style.display==='block'?'none':'block'">⬇ PDF</button>
-        <div id="pdf-menu" style="display:none;position:absolute;right:0;top:110%;background:#fff;border:0.5px solid #e5e5e5;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:160px;padding:4px">
-          <div onclick="exportPDF('all');document.getElementById('pdf-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Full report</div>
-          <div onclick="exportPDF('summary');document.getElementById('pdf-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Pair summary</div>
-          <div onclick="exportPDF('stmt');document.getElementById('pdf-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">Entity statements</div>
-          <div onclick="exportPDF('hub');document.getElementById('pdf-menu').style.display='none'" style="padding:7px 12px;cursor:pointer;font-size:12px;border-radius:6px" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">START Hub only</div>
+      <div class="dropdown-wrap">
+        <button class="btn-blue" onclick="toggleDd('pdf-dd')">⬇ PDF</button>
+        <div class="dropdown-menu" id="pdf-dd">
+          <div class="dd-item" onclick="exportPDF('all')">Full report</div>
+          <div class="dd-item" onclick="exportPDF('summary')">Pair summary</div>
+          <div class="dd-item" onclick="exportPDF('stmt')">Entity statements</div>
+          <div class="dd-item" onclick="exportPDF('hub')">START Hub</div>
         </div>
       </div>
       <button class="btn" onclick="ST.screen='upload';render()">+ New upload</button>
@@ -518,8 +495,8 @@ function renderDashboard(){
     <div class="metric"><div class="metric-label">Balanced</div><div class="metric-val ok">${ST.pairs.length-ub}</div></div>
     <div class="metric"><div class="metric-label">Variances</div><div class="metric-val ${ub>0?'warn':'ok'}">${ub}</div></div>
     <div class="metric"><div class="metric-label">Total variance</div><div class="metric-val ${tv>0?'warn':'ok'}">${fmt(tv)}</div></div>
-    <div class="metric"><div class="metric-label">Flowing in → START</div><div class="metric-val ok">${fmt(hub.totalIn)}</div></div>
-    <div class="metric"><div class="metric-label">Flowing out START →</div><div class="metric-val warn">${fmt(hub.totalOut)}</div></div>
+    <div class="metric"><div class="metric-label">↓ Incoming START</div><div class="metric-val ok">${fmt(hub.totalIn)}</div></div>
+    <div class="metric"><div class="metric-label">↑ Outgoing START</div><div class="metric-val warn">${fmt(hub.totalOut)}</div></div>
     <div class="metric"><div class="metric-label">START net</div><div class="metric-val ${hub.net>=0?'ok':'warn'}">${hub.net>=0?'+':''}${fmt(hub.net)}</div></div>
   </div>
   <div class="tabs">
@@ -541,24 +518,22 @@ function renderDashboard(){
 function renderHub(hub){
   return`<div class="hub-row">
     <div class="card"><div class="card-head"><span class="card-title">↓ Incoming to START</span><span class="ok" style="font-weight:500;font-size:13px">${fmt(hub.totalIn)}</span></div>
-    <table><thead><tr><th>Entity</th><th class="num">Owes START</th><th>Status</th><th>Tag</th></tr></thead>
+    <table><thead><tr><th>Entity</th><th class="num">Owes START</th><th>Status</th></tr></thead>
     <tbody>${hub.incoming.length?hub.incoming.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
       <td style="font-weight:500">${esc(e.entity)}</td>
       <td class="num ok" style="font-weight:500">${fmt(e.netVsStart)}</td>
       <td>${e.pairs.every(p=>p.balanced)?'<span style="font-size:11px;color:#16a34a">✓ Clean</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
-      <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
-    </tr>`).join(''):'<tr><td colspan="4" class="empty">None</td></tr>'}</tbody></table></div>
+    </tr>`).join(''):'<tr><td colspan="3" class="empty">None</td></tr>'}</tbody></table></div>
     <div class="card"><div class="card-head"><span class="card-title">↑ Outgoing from START</span><span class="warn" style="font-weight:500;font-size:13px">${fmt(hub.totalOut)}</span></div>
-    <table><thead><tr><th>Entity</th><th class="num">START owes</th><th>Status</th><th>Tag</th></tr></thead>
+    <table><thead><tr><th>Entity</th><th class="num">START owes</th><th>Status</th></tr></thead>
     <tbody>${hub.outgoing.length?hub.outgoing.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
       <td style="font-weight:500">${esc(e.entity)}</td>
       <td class="num warn" style="font-weight:500">${fmt(Math.abs(e.netVsStart))}</td>
       <td>${e.pairs.every(p=>p.balanced)?'<span style="font-size:11px;color:#16a34a">✓ Clean</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
-      <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
-    </tr>`).join(''):'<tr><td colspan="4" class="empty">None</td></tr>'}</tbody></table></div>
+    </tr>`).join(''):'<tr><td colspan="3" class="empty">None</td></tr>'}</tbody></table></div>
   </div>
   <div class="card"><div class="card-head"><span class="card-title">Payment waterfall — all flows through START</span></div>
-  <div class="scroll-x"><table><thead><tr><th>From</th><th></th><th>Via</th><th></th><th>To</th><th class="num">Amount</th><th>Currencies</th><th>Tag</th></tr></thead>
+  <div class="scroll-x"><table><thead><tr><th>From</th><th></th><th>Via</th><th></th><th>To</th><th class="num">Amount</th><th>Currencies</th></tr></thead>
   <tbody>
     ${hub.incoming.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
       <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(e.entity)}</span></td>
@@ -568,7 +543,6 @@ function renderHub(hub){
       <td class="muted" style="font-size:11px">Clears internally</td>
       <td class="num ok" style="font-weight:500">${fmt(e.netVsStart)}</td>
       <td class="muted" style="font-size:11px">${[...new Set(e.pairs.flatMap(p=>{const pair=ST.pairs.find(x=>x.pair===p.pair);return pair?pair.cur:[]}))].join(', ')}</td>
-      <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
     </tr>`).join('')}
     ${hub.outgoing.map(e=>`<tr class="clickable" onclick="drillSub('${esc(e.entity)}')">
       <td class="muted" style="font-size:11px">Clears internally</td>
@@ -578,9 +552,8 @@ function renderHub(hub){
       <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(e.entity)}</span></td>
       <td class="num warn" style="font-weight:500">${fmt(Math.abs(e.netVsStart))}</td>
       <td class="muted" style="font-size:11px">${[...new Set(e.pairs.flatMap(p=>{const pair=ST.pairs.find(x=>x.pair===p.pair);return pair?pair.cur:[]}))].join(', ')}</td>
-      <td>${pairTagBadge(e.pairs[0]?.pair||e.entity)}</td>
     </tr>`).join('')}
-    ${(!hub.incoming.length&&!hub.outgoing.length)?'<tr><td colspan="8" class="empty">All balanced</td></tr>':''}
+    ${(!hub.incoming.length&&!hub.outgoing.length)?'<tr><td colspan="7" class="empty">All balanced — no flows required</td></tr>':''}
   </tbody></table></div></div>`;
 }
 
@@ -597,7 +570,6 @@ function renderSummary(f){
     if(ST.txDesc&&t.desc!==ST.txDesc)return false;
     if(ST.txSide==='ar'&&!t.isAR)return false;
     if(ST.txSide==='ap'&&t.isAR)return false;
-    if(ST.txTagFilter&&t.tag!==ST.txTagFilter)return false;
     return true;
   }):[];
   return`<div class="filters">
@@ -610,17 +582,16 @@ function renderSummary(f){
     <span class="muted" style="font-size:12px;margin-left:auto">${f.length} pairs</span>
   </div>
   <div class="card"><div class="scroll-x"><table>
-    <thead><tr><th>Entity pair</th><th class="num">AR total</th><th class="num">AP total</th><th class="num">Variance</th><th>Status</th><th>Currencies</th><th>Tag</th><th class="num">Txns</th></tr></thead>
+    <thead><tr><th>Entity pair</th><th class="num">AR total</th><th class="num">AP total</th><th class="num">Variance</th><th>Status</th><th>Currencies</th><th class="num">Txns</th></tr></thead>
     <tbody>${f.map(p=>`<tr class="clickable ${ST.selectedPair===p.pair?'selected':''}" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
       <td style="font-weight:500;min-width:145px">${esc(p.pair)}</td>
       <td class="num ok">${fmt(p.arT)}</td><td class="num info">${fmt(p.apT)}</td>
       <td class="num" style="font-weight:500">${fmtD(p.diff)}</td>
       <td>${p.balanced?'<span style="font-size:11px;color:#16a34a">✓</span>':'<span style="font-size:11px;color:#dc2626">⚠ Variance</span>'}</td>
       <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
-      <td>${pairTagBadge(p.pair)}</td>
       <td class="num">${p.txs.length}</td>
     </tr>`).join('')}
-    ${f.length===0?'<tr><td colspan="8" class="empty">No pairs match</td></tr>':''}</tbody>
+    ${f.length===0?'<tr><td colspan="7" class="empty">No pairs match</td></tr>':''}</tbody>
   </table></div></div>
   ${detail?`<div class="card" id="drill" style="border:0.5px solid #111">
     <div class="card-head">
@@ -628,7 +599,6 @@ function renderSummary(f){
         <span class="card-title">${esc(detail.pair)}</span>
         ${detail.per.map(p=>`<span class="pill">${p}</span>`).join('')}
         ${detail.cur.map(c=>`<span class="pill">${c}</span>`).join('')}
-        ${pairTagBadge(detail.pair)}
       </div>
       <button class="btn" onclick="ST.selectedPair=null;render()">✕</button>
     </div>
@@ -654,20 +624,18 @@ function renderSummary(f){
       <select onchange="ST.txPeriod=this.value;render()"><option value="">All periods</option>${detail.per.map(p=>`<option value="${p}" ${ST.txPeriod===p?'selected':''}>${p}</option>`).join('')}</select>
       <select onchange="ST.txDesc=this.value;render()"><option value="">All types</option>${detail.desc.map(d=>`<option value="${esc(d)}" ${ST.txDesc===d?'selected':''}>${esc(d)}</option>`).join('')}</select>
       <select onchange="ST.txSide=this.value;render()"><option value="">Both sides</option><option value="ar" ${ST.txSide==='ar'?'selected':''}>AR only</option><option value="ap" ${ST.txSide==='ap'?'selected':''}>AP only</option></select>
-      <select onchange="ST.txTagFilter=this.value;render()"><option value="">All tags</option>${TAG_DEFS.map(t=>`<option value="${esc(t.tag)}" ${ST.txTagFilter===t.tag?'selected':''}>${esc(t.tag)}</option>`).join('')}</select>
       <span class="muted" style="font-size:11px;margin-left:auto">${filtTx.length} of ${detail.txs.length}</span>
     </div>
     <div class="scroll-x scroll-y"><table>
-      <thead><tr><th>Side</th><th>Entity</th><th>Period</th><th>Type</th><th class="num">Amount</th><th>Curr</th><th>Tag</th><th>Memo</th><th>Doc #</th></tr></thead>
+      <thead><tr><th>Side</th><th>Entity</th><th>Period</th><th>Type</th><th class="num">Amount</th><th>Curr</th><th>Memo</th><th>Doc #</th></tr></thead>
       <tbody>${filtTx.map(t=>`<tr style="background:${t.isAR?'#f0fdf4':'#eff6ff'}">
         <td>${t.isAR?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>':'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}</td>
         <td style="font-weight:500">${esc(t.sub)}</td><td>${esc(t.per)}</td><td>${esc(t.desc)}</td>
         <td class="num">${fmt(t.amt)}</td><td>${esc(t.cur)}</td>
-        <td>${txTagBadge(t)}</td>
         <td class="muted" style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.memo)}</td>
         <td class="muted" style="font-size:11px">${esc(t.doc)}</td>
       </tr>`).join('')}
-      ${filtTx.length===0?'<tr><td colspan="9" class="empty">No transactions match</td></tr>':''}</tbody>
+      ${filtTx.length===0?'<tr><td colspan="8" class="empty">No transactions match</td></tr>':''}</tbody>
     </table></div>
   </div>`:''}`;
 }
@@ -685,18 +653,15 @@ function renderMonthly(f){
     <thead>
       <tr>
         <th style="min-width:160px;position:sticky;left:0;z-index:2">Entity pair</th>
-        <th style="position:sticky;left:160px;z-index:2;min-width:90px">Tag</th>
         ${ST.periods.map(p=>`<th colspan="3" style="text-align:center;border-left:0.5px solid #e5e5e5">${p}</th>`).join('')}
       </tr>
       <tr>
         <th style="position:sticky;left:0;z-index:2"></th>
-        <th style="position:sticky;left:160px;z-index:2"></th>
         ${ST.periods.map(()=>['AR','AP','Var'].map((h,i)=>`<th class="num" style="font-size:10px;${i===0?'border-left:0.5px solid #e5e5e5':''}">${h}</th>`).join('')).join('')}
       </tr>
     </thead>
     <tbody>${f.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">
       <td style="font-weight:500;position:sticky;left:0;background:#fff;min-width:160px;z-index:1">${esc(p.pair)}</td>
-      <td style="position:sticky;left:160px;background:#fff;z-index:1">${pairTagBadge(p.pair)}</td>
       ${ST.periods.map(per=>{const ar=p.arByP[per]||0,ap=p.apByP[per]||0,d=ar-ap;
         return`<td class="num ok" style="font-size:11px;border-left:0.5px solid #f0f0f0">${ar>0?fmt(ar):'—'}</td>
           <td class="num info" style="font-size:11px">${ap>0?fmt(ap):'—'}</td>
@@ -708,13 +673,13 @@ function renderMonthly(f){
 function renderPayments(pmts){
   if(!pmts.length)return`<div class="card" style="padding:3rem;text-align:center;color:#666"><div style="font-size:32px;margin-bottom:10px">✓</div><p style="font-weight:500;color:#111;margin-bottom:4px">All pairs balanced</p></div>`;
   return`<div style="background:#fef2f2;border:0.5px solid #fca5a5;border-radius:10px;padding:10px 14px;margin-bottom:1rem;display:flex;gap:10px;align-items:center">
-    <span style="font-size:18px">⚠</span>
+    <span>⚠</span>
     <div><p style="font-size:13px;font-weight:500;color:#dc2626;margin-bottom:2px">${pmts.length} pair${pmts.length>1?'s':''} · Total: ${fmt(pmts.reduce((s,p)=>s+p.amt,0))}</p>
     <p style="font-size:12px;color:#dc2626">All payments route through START as intermediary</p></div>
   </div>
   <div class="card"><div class="card-head"><span class="card-title">Payment queue — routed through START</span></div>
   <div class="scroll-x"><table>
-    <thead><tr><th>Pair</th><th>Payer</th><th></th><th>Via START</th><th></th><th>Payee</th><th class="num">Amount</th><th>Currencies</th><th>Tag</th><th></th></tr></thead>
+    <thead><tr><th>Pair</th><th>Payer</th><th></th><th>Via START</th><th></th><th>Payee</th><th class="num">Amount</th><th>Currencies</th><th></th></tr></thead>
     <tbody>${pmts.map(p=>`<tr class="clickable" onclick="selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">
       <td style="font-weight:500">${esc(p.pair)}</td>
       <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(p.payer)}</span></td>
@@ -724,19 +689,16 @@ function renderPayments(pmts){
       <td><span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(p.payee)}</span></td>
       <td class="num warn" style="font-size:13px;font-weight:500">${fmt(p.amt)}</td>
       <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
-      <td>${pairTagBadge(p.pair)}</td>
       <td><button class="btn" style="font-size:11px" onclick="event.stopPropagation();selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">Drill in →</button></td>
     </tr>`).join('')}</tbody>
   </table></div></div>`;
 }
 
-// ── ENTITY STATEMENTS ───────────────────────────────────────────────────────
 function renderStatements(){
   const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
   const stmtRows=ST.stmtEntity?ST.rows.filter(r=>r.sub_name===ST.stmtEntity):[];
   const arT=stmtRows.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
   const apT=stmtRows.filter(r=>!isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
-  // group by pair key
   const byPair={};
   stmtRows.forEach(r=>{
     const k=r.pair_key||'Other';
@@ -752,9 +714,8 @@ function renderStatements(){
     </select>
     ${ST.stmtEntity?`<button class="btn-blue" onclick="exportPDF('stmt')">⬇ PDF</button><button class="btn-green" onclick="exportExcel('stmt')">⬇ Excel</button>`:''}
   </div>
-  ${!ST.stmtEntity?'<div class="card"><div class="empty">Select an entity to view its statement</div></div>':``}
-  ${ST.stmtEntity?`
-  <div class="card">
+  ${!ST.stmtEntity?'<div class="card"><div class="empty">Select an entity to view its statement</div></div>':''}
+  ${ST.stmtEntity?`<div class="card">
     <div class="stmt-entity-head">
       <span>${esc(ST.stmtEntity)} — Intercompany Statement</span>
       <div style="display:flex;gap:16px;font-size:12px">
@@ -764,39 +725,35 @@ function renderStatements(){
       </div>
     </div>
     ${Object.values(byPair).map(group=>`
-      <div class="stmt-section-head">
-        ${esc(group.pair)} &nbsp;·&nbsp; AR: ${fmt(group.arT)} &nbsp;·&nbsp; AP: ${fmt(group.apT)} &nbsp;·&nbsp; Net: ${fmtD(group.arT-group.apT)}
-      </div>
+      <div class="stmt-section-head">${esc(group.pair)} &nbsp;·&nbsp; AR: ${fmt(group.arT)} &nbsp;·&nbsp; AP: ${fmt(group.apT)} &nbsp;·&nbsp; Net: ${fmtD(group.arT-group.apT)}</div>
       <div class="scroll-x"><table>
-        <thead><tr><th>Side</th><th>Relationship</th><th class="num">Amount</th><th>Currency</th><th>Period</th><th>Description</th><th>Doc #</th><th>Memo</th><th>Tag</th></tr></thead>
+        <thead><tr><th>Side</th><th>Relationship</th><th class="num">Amount</th><th>Currency</th><th>Period</th><th>Description</th><th>Doc #</th><th>Who Owes Who</th><th>Memo</th></tr></thead>
         <tbody>${group.txs.map(r=>{const ar=isAR(r);return`<tr style="background:${ar?'#f0fdf4':'#eff6ff'}">
           <td>${ar?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>':'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}</td>
           <td style="font-size:11px">${esc(r.relationship)}</td>
           <td class="num">${fmt(r.amount)}</td>
-          <td>${esc(r.currency)}</td>
-          <td>${esc(r.period)}</td>
-          <td>${esc(r.description)}</td>
+          <td>${esc(r.currency)}</td><td>${esc(r.period)}</td><td>${esc(r.description)}</td>
           <td class="muted" style="font-size:11px">${esc(r.doc_number)}</td>
+          <td style="font-size:11px">${esc(r.who_owes_who)}</td>
           <td class="muted" style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.memo)}</td>
-          <td>${txTagBadge({id:r.id,tag:r.tag,tag_note:r.tag_note,tagged_by:r.tagged_by})}</td>
         </tr>`}).join('')}</tbody>
       </table></div>
     `).join('')}
   </div>`:''}`;
 }
 
-// ── RAW DATA VIEW ────────────────────────────────────────────────────────────
 function renderRaw(){
   let rows=ST.rows;
   if(ST.rawPair) rows=rows.filter(r=>r.pair_key===ST.rawPair);
   if(ST.rawPeriod) rows=rows.filter(r=>r.period===ST.rawPeriod);
-  if(ST.rawSearch) rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(ST.rawSearch.toLowerCase()));
-  const total=rows.length, pages=Math.ceil(total/PAGE_SIZE);
+  if(ST.rawInclude) rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
+  if(ST.rawSearch) rows=rows.filter(r=>Object.values(r).join(' ').toLowerCase().includes(ST.rawSearch.toLowerCase()));
+  const total=rows.length,pages=Math.ceil(total/PAGE_SIZE)||1;
   const page=Math.min(ST.rawPage,pages-1);
   const pageRows=rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
   const pairs=[...new Set(ST.rows.map(r=>r.pair_key).filter(Boolean))].sort();
-  return`<div class="filters" style="margin-bottom:8px">
-    <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:200px">
+  return`<div class="filters">
+    <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:190px">
     <select onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
       <option value="">All pairs</option>
       ${pairs.map(p=>`<option value="${esc(p)}" ${ST.rawPair===p?'selected':''}>${esc(p)}</option>`).join('')}
@@ -805,63 +762,51 @@ function renderRaw(){
       <option value="">All periods</option>
       ${ST.periods.map(p=>`<option value="${p}" ${ST.rawPeriod===p?'selected':''}>${p}</option>`).join('')}
     </select>
+    <select onchange="ST.rawInclude=this.value;ST.rawPage=0;render()">
+      <option value="">All rows</option>
+      <option value="Include" ${ST.rawInclude==='Include'?'selected':''}>Include only</option>
+      <option value="Exclude" ${ST.rawInclude==='Exclude'?'selected':''}>Exclude only</option>
+    </select>
     <span class="muted" style="font-size:12px">${total.toLocaleString()} rows</span>
-    <span style="font-size:11px;color:#888;margin-left:auto"><span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 5px;border-radius:3px;font-size:10px">yellow</span> = edited field</span>
   </div>
   <div class="card">
     <div class="card-head">
-      <span class="card-title">Raw data — click any yellow-bordered cell to edit</span>
+      <div>
+        <span class="card-title">Raw Data — columns A–AB</span>
+        <span style="font-size:11px;color:#888;margin-left:10px">
+          <span style="background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500">green headers</span> = editable (Q–AB) &nbsp;
+          <span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 6px;border-radius:3px;font-size:10px">yellow</span> = edited
+        </span>
+      </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <span class="muted" style="font-size:11px">Page ${page+1} of ${Math.max(1,pages)}</span>
+        <span class="muted" style="font-size:11px">Page ${page+1} of ${pages}</span>
         <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev</button>
         <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
       </div>
     </div>
     <div class="scroll-x scroll-y"><table>
       <thead><tr>
-        <th>Tag</th>
-        ${EDITABLE_FIELDS.map(f=>`<th style="background:#f0fdf4;color:#166534">${f.label}</th>`).join('')}
-        ${READONLY_FIELDS.map(f=>`<th style="background:#fafafa;color:#888">${f.label}</th>`).join('')}
+        ${READONLY_COLS.map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
+        ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
       </tr></thead>
       <tbody>${pageRows.map(r=>`<tr>
-        <td>${txTagBadge({id:r.id,tag:r.tag,tag_note:r.tag_note,tagged_by:r.tagged_by})}</td>
-        ${EDITABLE_FIELDS.map(f=>`<td style="min-width:90px">${editableCell(r,f.key,r[f.key])}</td>`).join('')}
-        ${READONLY_FIELDS.map(f=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[f.key])}</td>`).join('')}
+        ${READONLY_COLS.map(c=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
+        ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
       </tr>`).join('')}
-      ${pageRows.length===0?'<tr><td colspan="30" class="empty">No rows match</td></tr>':''}</tbody>
+      ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length}" class="empty">No rows match</td></tr>`:''}</tbody>
     </table></div>
   </div>
-  <p style="font-size:11px;color:#888">Editable columns (green headers) save directly to Supabase on Enter or click away. Read-only columns (grey) are for reference only.</p>`;
+  <p style="font-size:11px;color:#888">Click any cell under a green header to edit. Changes save to Supabase immediately on Enter or click away. Grey columns (A–P) are read-only reference data.</p>`;
 }
 
 function selectPair(pair){
   ST.selectedPair=ST.selectedPair===pair?null:pair;
-  ST.txPeriod='';ST.txDesc='';ST.txSide='';ST.txTagFilter='';
+  ST.txPeriod='';ST.txDesc='';ST.txSide='';
   render();
   setTimeout(()=>{const el=document.getElementById('drill');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},60);
 }
 
-function renderModal(){
-  const m=ST.modal;
-  const existing=m.type==='pair'?ST.pairTags[m.target]:ST.txTags[m.target];
-  return`<div class="modal-overlay" onclick="ST.modal=null;render()">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-title">${m.type==='pair'?`Tag pair: ${esc(m.target)}`:'Tag transaction'}</div>
-    <div class="form-row"><label class="form-label">Your name (shown to team)</label>
-      <input type="text" id="tagger-name" placeholder="e.g. Yary" style="width:100%" value="${esc(existing?.by||existing?.tagged_by||'')}"></div>
-    <div class="form-row"><label class="form-label">Tag <span style="color:#dc2626">*</span></label>
-      <select id="tag-select" style="width:100%">${tagOptions(existing?.tag||'')}</select></div>
-    <div class="form-row"><label class="form-label">Add custom tag</label>
-      <div style="display:flex;gap:8px"><input type="text" id="custom-tag-input" placeholder="Type new tag…" style="flex:1"><button class="btn" onclick="addCustomTag()">Add</button></div></div>
-    <div class="form-row"><label class="form-label">Note</label>
-      <textarea id="tag-note" placeholder="Add context for your team…">${esc(existing?.tag_note||existing?.note||'')}</textarea></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-      ${existing?.tag?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="clearTag()">Remove</button>`:''}
-      <button class="btn" onclick="ST.modal=null;render()">Cancel</button>
-      <button class="btn-dark" onclick="saveTag()">Save tag</button>
-    </div>
-  </div></div>`;
-}
+function renderModal(){return'';}
 
 init();
 </script>
