@@ -132,7 +132,7 @@ const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
-  stmtEntity:null,
+  stmtEntity:null,settlementView:'all',settlementEntity:null,
   rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},
   editingCell:null,
   modal:null,
@@ -184,6 +184,41 @@ function buildHub(){
     totalIn:incoming.reduce((s,e)=>s+e.netVsStart,0),
     totalOut:outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0),
     net:incoming.reduce((s,e)=>s+e.netVsStart,0)-outgoing.reduce((s,e)=>s+Math.abs(e.netVsStart),0)};
+}
+
+
+function buildSettlement(){
+  const PORD=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function sp(p){const[m,y]=(p||'').split(' ');return(Number(y)||0)*100+(PORD.indexOf(m)>=0?PORD.indexOf(m):0);}
+
+  // Per-entity aggregation across ALL pairs
+  const map={};
+  ST.rows.forEach(r=>{
+    if((r.include_exclude||'Include')==='Exclude')return;
+    const sub=r.sub_name||'';if(!sub)return;
+    const amt=parseFloat(r.amount)||0;
+    const per=r.period||'';
+    const pair=r.pair_key||'';
+    const ar=isAR(r);
+    if(!map[sub])map[sub]={entity:sub,ar:0,ap:0,pairs:{},periods:{},whoOwes:new Set()};
+    const e=map[sub];
+    if(ar)e.ar+=amt; else e.ap+=amt;
+    if(r.who_owes_who)e.whoOwes.add(r.who_owes_who);
+    // by pair
+    if(!e.pairs[pair])e.pairs[pair]={pair,ar:0,ap:0};
+    if(ar)e.pairs[pair].ar+=amt; else e.pairs[pair].ap+=amt;
+    // by period
+    if(!e.periods[per])e.periods[per]={period:per,ar:0,ap:0};
+    if(ar)e.periods[per].ar+=amt; else e.periods[per].ap+=amt;
+  });
+
+  return Object.values(map).map(e=>{
+    const net=e.ar-e.ap;
+    const action=Math.abs(net)<0.02?'Settled':net<0?'Pays':'Receives';
+    const pairs=Object.values(e.pairs).sort((a,b)=>Math.abs(b.ar-b.ap)-Math.abs(a.ar-a.ap));
+    const periods=Object.values(e.periods).sort((a,b)=>sp(a.period)-sp(b.period));
+    return{entity:e.entity,ar:e.ar,ap:e.ap,net,action,pairs,periods,whoOwes:[...e.whoOwes]};
+  }).sort((a,b)=>a.net-b.net); // payers first
 }
 
 function filtered(){return ST.pairs.filter(p=>{
@@ -362,6 +397,17 @@ function exportExcel(type){
       ...hub.outgoing.map(e=>['Outgoing',e.entity,Math.abs(e.netVsStart),e.pairs.every(p=>p.balanced)?'Yes':'No'])];
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'START Hub');
   }
+  if(type==='settlement'||type==='all'){
+    const sdata=buildSettlement();
+    // Summary tab
+    const hdr=['Entity','AR (Owed To)','AP (Owes)','Net Position','Action','Pairs'];
+    const rows=sdata.map(e=>[e.entity,e.ar,e.ap,e.net,e.action,e.pairs.length]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([hdr,...rows]),'Settlement Summary');
+    // Payment schedule tab
+    const phdr=['Entity','Period','AR','AP','Net','Action'];
+    const prows=sdata.flatMap(e=>e.periods.map(p=>[e.entity,p.period,p.ar,p.ap,p.ar-p.ap,p.ar-p.ap<-0.02?'Pays':p.ar-p.ap>0.02?'Receives':'Settled']));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([phdr,...prows]),'Payment Schedule');
+  }
   XLSX.writeFile(wb,`IntercoRecon_${new Date().toISOString().slice(0,10)}.xlsx`);
   closeDropdown();
 }
@@ -512,6 +558,7 @@ function renderDashboard(){
     <button class="tab ${ST.view==='summary'?'active':''}" onclick="ST.view='summary';render()">All Pairs</button>
     <button class="tab ${ST.view==='monthly'?'active':''}" onclick="ST.view='monthly';render()">By Month</button>
     <button class="tab ${ST.view==='payments'?'active':''}" onclick="ST.view='payments';render()">Payments${pmts.length>0?' ('+pmts.length+')':''}</button>
+    <button class="tab ${ST.view==='settlement'?'active':''}" onclick="ST.view='settlement';render()">Settlement</button>
     <button class="tab ${ST.view==='statements'?'active':''}" onclick="ST.view='statements';render()">Entity Statements</button>
     <button class="tab ${ST.view==='raw'?'active':''}" onclick="ST.view='raw';render()">Raw Data</button>
   </div>
@@ -519,6 +566,7 @@ function renderDashboard(){
   ${ST.view==='summary'?renderSummary(f):''}
   ${ST.view==='monthly'?renderMonthly(f):''}
   ${ST.view==='payments'?renderPayments(pmts):''}
+  ${ST.view==='settlement'?renderSettlement():''}
   ${ST.view==='statements'?renderStatements():''}
   ${ST.view==='raw'?renderRaw():''}`;
 }
@@ -700,6 +748,234 @@ function renderPayments(pmts){
       <td><button class="btn" style="font-size:11px" onclick="event.stopPropagation();selectPair('${p.pair.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}');ST.view='summary';render()">Drill in →</button></td>
     </tr>`).join('')}</tbody>
   </table></div></div>`;
+}
+
+function renderSettlement(){
+  const data=buildSettlement();
+  const payers=data.filter(e=>e.action==='Pays');
+  const receivers=data.filter(e=>e.action==='Receives');
+  const settled=data.filter(e=>e.action==='Settled');
+  const totalOwed=payers.reduce((s,e)=>s+Math.abs(e.net),0);
+
+  // unbalanced pairs only
+  const unbalPairs=ST.pairs.filter(p=>!p.balanced);
+
+  // filter for detail panel
+  const sel=ST.settlementEntity?data.find(e=>e.entity===ST.settlementEntity):null;
+
+  const viewBtns=['all','payers','receivers','variance'].map(v=>
+    `<button class="tab ${ST.settlementView===v?'active':''}" onclick="ST.settlementView='${v}';render()" style="font-size:11px;padding:4px 10px">${{all:'All entities',payers:'Payers',receivers:'Receivers',variance:'Variance pairs'}[v]}</button>`
+  ).join('');
+
+  function entityRow(e,highlight){
+    const netColor=e.action==='Pays'?'#dc2626':e.action==='Receives'?'#16a34a':'#888';
+    const netBg=e.action==='Pays'?'#fef2f2':e.action==='Receives'?'#f0fdf4':'#f5f5f5';
+    return`<tr class="clickable ${ST.settlementEntity===e.entity?'selected':''}"
+      onclick="ST.settlementEntity=ST.settlementEntity===e.entity?null:'${esc(e.entity)}';render();setTimeout(()=>{const el=document.getElementById('settle-detail');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},60)">
+      <td style="font-weight:500">${esc(e.entity)}</td>
+      <td class="num ok">${fmt(e.ar)}</td>
+      <td class="num info">${fmt(e.ap)}</td>
+      <td class="num" style="font-weight:700;color:${netColor};background:${netBg};border-radius:4px;padding:3px 8px">
+        ${e.action==='Pays'?'−':'+'} ${fmt(e.net)}
+      </td>
+      <td>
+        <span style="font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;
+          background:${e.action==='Pays'?'#fef2f2':e.action==='Receives'?'#dcfce7':'#f3f4f6'};
+          color:${e.action==='Pays'?'#dc2626':e.action==='Receives'?'#16a34a':'#666'}">
+          ${e.action==='Pays'?'↑ Pays START':e.action==='Receives'?'↓ Receives from START':'✓ Settled'}
+        </span>
+      </td>
+      <td class="num muted" style="font-size:11px">${e.pairs.length}</td>
+      <td><button class="btn-sm" onclick="event.stopPropagation();ST.settlementEntity='${esc(e.entity)}';render()">Detail →</button></td>
+    </tr>`;
+  }
+
+  let tableRows='';
+  if(ST.settlementView==='payers')      tableRows=payers.map(e=>entityRow(e)).join('');
+  else if(ST.settlementView==='receivers') tableRows=receivers.map(e=>entityRow(e)).join('');
+  else if(ST.settlementView==='variance') tableRows=''; // handled separately
+  else tableRows=[...payers,...settled,...receivers].map(e=>entityRow(e)).join('');
+
+  return`
+  <!-- Summary metrics -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:1rem">
+    <div class="metric" style="border-left:3px solid #dc2626">
+      <div class="metric-label">Entities paying</div>
+      <div class="metric-val warn">${payers.length}</div>
+      <div style="font-size:11px;color:#dc2626;margin-top:3px">Total owed: ${fmt(totalOwed)}</div>
+    </div>
+    <div class="metric" style="border-left:3px solid #16a34a">
+      <div class="metric-label">Entities receiving</div>
+      <div class="metric-val ok">${receivers.length}</div>
+      <div style="font-size:11px;color:#16a34a;margin-top:3px">Total receiving: ${fmt(receivers.reduce((s,e)=>s+e.net,0))}</div>
+    </div>
+    <div class="metric" style="border-left:3px solid #888">
+      <div class="metric-label">Fully settled</div>
+      <div class="metric-val muted">${settled.length}</div>
+    </div>
+    <div class="metric" style="border-left:3px solid #d97706">
+      <div class="metric-label">Variance pairs</div>
+      <div class="metric-val amber">${unbalPairs.length}</div>
+      <div style="font-size:11px;color:#d97706;margin-top:3px">Total: ${fmt(unbalPairs.reduce((s,p)=>s+Math.abs(p.diff),0))}</div>
+    </div>
+  </div>
+
+  <!-- View toggle -->
+  <div style="display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap">${viewBtns}</div>
+
+  ${ST.settlementView!=='variance'?`
+  <!-- Entity table -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">
+        ${ST.settlementView==='all'?'All entities — net settlement position':
+          ST.settlementView==='payers'?'Entities that need to pay':'Entities that receive payment'}
+      </span>
+      <div style="display:flex;gap:6px">
+        <button class="btn-green" onclick="exportExcel('settlement')">⬇ Excel</button>
+        <button class="btn-blue" onclick="exportPDF('settlement')">⬇ PDF</button>
+      </div>
+    </div>
+    <div class="scroll-x"><table>
+      <thead><tr>
+        <th>Entity</th>
+        <th class="num">AR (owed to entity)</th>
+        <th class="num">AP (entity owes)</th>
+        <th class="num">Net position</th>
+        <th>Action</th>
+        <th class="num">Pairs</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${tableRows||'<tr><td colspan="7" class="empty">No entities match</td></tr>'}
+      </tbody>
+    </table></div>
+  </div>`:''}
+
+  ${ST.settlementView==='variance'?`
+  <!-- Variance pairs only -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Unbalanced pairs — variance amounts only</span>
+      <span class="muted" style="font-size:12px">Total variance: ${fmt(unbalPairs.reduce((s,p)=>s+Math.abs(p.diff),0))}</span>
+    </div>
+    <div class="scroll-x"><table>
+      <thead><tr>
+        <th>Pair</th><th>Payer</th><th></th><th>Via START</th><th></th><th>Payee</th>
+        <th class="num">Variance (AR−AP)</th><th>Currencies</th>
+      </tr></thead>
+      <tbody>${unbalPairs.map(p=>{
+        const[e1,e2]=(p.pair+'|').split('|').map(s=>s.trim());
+        const[payer,payee]=p.diff>0?[e2,e1]:[e1,e2];
+        return`<tr class="clickable" onclick="ST.settlementEntity='${esc(payer)}';ST.settlementView='all';render()">
+          <td style="font-weight:500">${esc(p.pair)}</td>
+          <td><span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(payer)}</span></td>
+          <td class="muted">→</td>
+          <td><span style="background:#f0fdf4;color:#166534;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500;border:0.5px solid #bbf7d0">START</span></td>
+          <td class="muted">→</td>
+          <td><span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 8px;border-radius:100px;font-weight:500">${esc(payee)}</span></td>
+          <td class="num warn" style="font-weight:600">${fmt(p.diff)}</td>
+          <td class="muted" style="font-size:11px">${p.cur.join(', ')}</td>
+        </tr>`;
+      }).join('')}
+      ${unbalPairs.length===0?'<tr><td colspan="8" class="empty">All pairs balanced</td></tr>':''}
+      </tbody>
+    </table></div>
+  </div>`:''}
+
+  <!-- Entity detail panel -->
+  ${sel?`<div class="card" id="settle-detail" style="border:0.5px solid #111;margin-top:1rem">
+    <div class="card-head">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="card-title">${esc(sel.entity)} — Settlement Detail</span>
+        <span style="font-size:13px;font-weight:600;color:${sel.action==='Pays'?'#dc2626':'#16a34a'}">
+          ${sel.action==='Pays'?'Pays':'Receives'} ${fmt(Math.abs(sel.net))} net
+        </span>
+      </div>
+      <button class="btn" onclick="ST.settlementEntity=null;render()">✕</button>
+    </div>
+
+    <!-- Entity totals -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:0.5px solid #e5e5e5">
+      ${[
+        ['Total AR (owed to entity)',fmt(sel.ar),'ok'],
+        ['Total AP (entity owes)',fmt(sel.ap),'info'],
+        ['Net position',`${sel.action==='Pays'?'−':'+'}${fmt(Math.abs(sel.net))}`,sel.action==='Pays'?'warn':'ok'],
+        ['Action',sel.action==='Pays'?'↑ Pays START':sel.action==='Receives'?'↓ Receives':'✓ Settled',sel.action==='Pays'?'warn':sel.action==='Receives'?'ok':'muted'],
+      ].map(([l,v,c])=>`
+        <div style="padding:10px 14px;border-right:0.5px solid #e5e5e5">
+          <div style="font-size:11px;color:#888;margin-bottom:3px">${l}</div>
+          <div style="font-size:14px;font-weight:600" class="${c}">${v}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- By period -->
+    <div style="border-bottom:0.5px solid #e5e5e5">
+      <div class="stmt-section-head">Payment schedule by period</div>
+      <div class="scroll-x"><table>
+        <thead><tr>
+          <th>Period</th>
+          <th class="num">AR</th>
+          <th class="num">AP</th>
+          <th class="num">Net</th>
+          <th>Action this period</th>
+        </tr></thead>
+        <tbody>
+          ${sel.periods.map(p=>{
+            const net=p.ar-p.ap;
+            const act=Math.abs(net)<0.02?'Settled':net<0?'↑ Pays':'↓ Receives';
+            const col=Math.abs(net)<0.02?'#888':net<0?'#dc2626':'#16a34a';
+            return`<tr>
+              <td style="font-weight:500">${esc(p.period)}</td>
+              <td class="num ok">${fmt(p.ar)}</td>
+              <td class="num info">${fmt(p.ap)}</td>
+              <td class="num" style="font-weight:600;color:${col}">${net<0?'−':'+'}${fmt(Math.abs(net))}</td>
+              <td style="font-size:11px;color:${col};font-weight:500">${act}</td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:#f5f5f3;border-top:1.5px solid #d4d4d4">
+            <td style="font-weight:600">Total</td>
+            <td class="num ok" style="font-weight:600">${fmt(sel.ar)}</td>
+            <td class="num info" style="font-weight:600">${fmt(sel.ap)}</td>
+            <td class="num" style="font-weight:700;color:${sel.action==='Pays'?'#dc2626':'#16a34a'}">${sel.action==='Pays'?'−':'+'}${fmt(Math.abs(sel.net))}</td>
+            <td style="font-weight:600;color:${sel.action==='Pays'?'#dc2626':'#16a34a'}">${sel.action==='Pays'?'↑ Pays START':'↓ Receives from START'}</td>
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <!-- By pair -->
+    <div>
+      <div class="stmt-section-head">Breakdown by pair</div>
+      <div class="scroll-x"><table>
+        <thead><tr>
+          <th>Pair</th>
+          <th class="num">AR</th>
+          <th class="num">AP</th>
+          <th class="num">Net</th>
+          <th>Balanced?</th>
+        </tr></thead>
+        <tbody>
+          ${sel.pairs.map(p=>{
+            const net=p.ar-p.ap;
+            const balanced=Math.abs(net)<0.02;
+            return`<tr class="clickable" onclick="ST.selectedPair='${esc(p.pair)}';ST.view='summary';render()">
+              <td style="font-weight:500">${esc(p.pair)}</td>
+              <td class="num ok">${fmt(p.ar)}</td>
+              <td class="num info">${fmt(p.ap)}</td>
+              <td class="num" style="font-weight:600;color:${balanced?'#16a34a':net<0?'#dc2626':'#d97706'}">${net<0?'−':net>0?'+':''}${fmt(Math.abs(net))}</td>
+              <td>${balanced
+                ?'<span style="color:#16a34a;font-size:11px">✓ Balanced</span>'
+                :'<span style="color:#dc2626;font-size:11px">⚠ Variance</span>'}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  </div>`:''}
+  <p style="font-size:11px;color:#888;margin-top:6px">Net = AR minus AP across all pairs. Positive net = entity is owed money (receives). Negative net = entity owes money (pays). Click any entity row for full breakdown by period and pair.</p>
+  `;
 }
 
 function renderStatements(){
