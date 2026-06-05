@@ -80,7 +80,22 @@ const SUPA_URL='https://zwinmrqclkefpsfedwgg.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aW5tcnFjbGtlZnBzZmVkd2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MjY5MzUsImV4cCI6MjA5NjEwMjkzNX0.1uQY3ypn9223gDAWodnqmW82gfNBFo-whBhl4GMU5Dw';
 const H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 const api={
-  get:async(t,p='')=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json()},
+  get:async(t,p='')=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{headers:{...H,'Range-Unit':'items','Range':'0-9999'}});if(!r.ok)throw new Error(await r.text());return r.json()},
+  getAll:async(t,filter='')=>{
+    // paginate in batches of 1000 to bypass Supabase default limit
+    let all=[],from=0,batchSize=1000;
+    while(true){
+      const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${filter}&order=period.asc`,{
+        headers:{...H,'Range-Unit':'items','Range':`${from}-${from+batchSize-1}`,'Prefer':'count=exact'}
+      });
+      if(!r.ok)throw new Error(await r.text());
+      const batch=await r.json();
+      all=[...all,...batch];
+      if(batch.length<batchSize)break;
+      from+=batchSize;
+    }
+    return all;
+  },
   post:async(t,b)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json()},
   patch:async(t,p,b)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json()},
   del:async(t,p)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text())}
@@ -301,7 +316,7 @@ async function processFile(file){
 async function loadUpload(upload){
   ST.current=upload;
   document.getElementById('root').innerHTML=`<div class="app"><div class="loading"><span class="spin"></span>Loading ${esc(upload.file_name)}…</div></div>`;
-  ST.rows=await api.get('transactions',`upload_id=eq.${upload.id}&order=period.asc&limit=9999`);
+  ST.rows=await api.getAll('transactions',`upload_id=eq.${upload.id}`);
   aggregate(ST.rows);
   ST.screen='dashboard';ST.view='hub';ST.selectedPair=null;ST.search='';ST.statusFilter='all';ST.rawPage=0;
   render();
