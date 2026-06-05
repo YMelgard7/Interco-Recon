@@ -133,7 +133,7 @@ const ST={
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,
-  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,
+  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},
   editingCell:null,
   modal:null,
   uploadStatus:null,uploadMsg:'',uploadProgress:0,
@@ -751,15 +751,45 @@ function renderStatements(){
 }
 
 function renderRaw(){
+  // build per-column unique values for filter dropdowns
+  function colVals(key){
+    return [...new Set(ST.rows.map(r=>String(r[key]??'')).filter(Boolean))].sort();
+  }
+
+  // apply all filters
   let rows=ST.rows;
-  if(ST.rawPair) rows=rows.filter(r=>r.pair_key===ST.rawPair);
+  if(ST.rawPair)   rows=rows.filter(r=>r.pair_key===ST.rawPair);
   if(ST.rawPeriod) rows=rows.filter(r=>r.period===ST.rawPeriod);
-  if(ST.rawInclude) rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
+  if(ST.rawInclude)rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
   if(ST.rawSearch) rows=rows.filter(r=>Object.values(r).join(' ').toLowerCase().includes(ST.rawSearch.toLowerCase()));
+  // per-column filters
+  const cf=ST.rawColFilters||{};
+  Object.entries(cf).forEach(([k,v])=>{if(v)rows=rows.filter(r=>String(r[k]??'')==v);});
+
   const total=rows.length,pages=Math.ceil(total/PAGE_SIZE)||1;
   const page=Math.min(ST.rawPage,pages-1);
   const pageRows=rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+  const allCols=[...READONLY_COLS,...EDITABLE_COLS];
   const pairs=[...new Set(ST.rows.map(r=>r.pair_key).filter(Boolean))].sort();
+
+  // column filter header row — one mini-select per column
+  function colFilterTh(col){
+    const vals=colVals(col.key);
+    const cur=cf[col.key]||'';
+    if(vals.length===0) return`<th style="padding:3px 4px;background:#fafafa"></th>`;
+    const isEdit=EDITABLE_COLS.includes(col);
+    const bg=isEdit?'#f0fdf4':'#f5f5f3';
+    return`<th style="padding:3px 4px;background:${bg}">
+      <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%;max-width:120px"
+        onchange="ST.rawColFilters=ST.rawColFilters||{};ST.rawColFilters['${col.key}']=this.value;ST.rawPage=0;render()">
+        <option value="">All</option>
+        ${vals.map(v=>`<option value="${esc(v)}" ${cur===v?'selected':''}>${esc(String(v).slice(0,28))}</option>`).join('')}
+      </select>
+    </th>`;
+  }
+
+  const activeFilters=Object.values(cf).filter(Boolean).length;
+
   return`<div class="filters">
     <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:190px">
     <select onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
@@ -775,15 +805,16 @@ function renderRaw(){
       <option value="Include" ${ST.rawInclude==='Include'?'selected':''}>Include only</option>
       <option value="Exclude" ${ST.rawInclude==='Exclude'?'selected':''}>Exclude only</option>
     </select>
-    <span class="muted" style="font-size:12px">${total.toLocaleString()} rows</span>
+    ${activeFilters>0?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="ST.rawColFilters={};ST.rawSearch='';ST.rawPair='';ST.rawPeriod='';ST.rawInclude='';ST.rawPage=0;render()">✕ Clear all filters (${activeFilters+[ST.rawSearch,ST.rawPair,ST.rawPeriod,ST.rawInclude].filter(Boolean).length})</button>`:''}
+    <span class="muted" style="font-size:12px;margin-left:auto">${total.toLocaleString()} rows</span>
   </div>
   <div class="card">
     <div class="card-head">
       <div>
         <span class="card-title">Raw Data — columns A–AB</span>
         <span style="font-size:11px;color:#888;margin-left:10px">
-          <span style="background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500">green headers</span> = editable (Q–AB) &nbsp;
-          <span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 6px;border-radius:3px;font-size:10px">yellow</span> = edited
+          <span style="background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500">green</span> = editable (Q–AB) &nbsp;
+          <span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 5px;border-radius:3px;font-size:10px">yellow</span> = edited
         </span>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -793,18 +824,24 @@ function renderRaw(){
       </div>
     </div>
     <div class="scroll-x scroll-y"><table>
-      <thead><tr>
-        ${READONLY_COLS.map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
-        ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
-      </tr></thead>
+      <thead>
+        <tr>
+          ${READONLY_COLS.map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
+          ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
+        </tr>
+        <tr>
+          ${READONLY_COLS.map(c=>colFilterTh(c)).join('')}
+          ${EDITABLE_COLS.map(c=>colFilterTh(c)).join('')}
+        </tr>
+      </thead>
       <tbody>${pageRows.map(r=>`<tr>
         ${READONLY_COLS.map(c=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
         ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
       </tr>`).join('')}
-      ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length}" class="empty">No rows match</td></tr>`:''}</tbody>
+      ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length}" class="empty">No rows match filters</td></tr>`:''}</tbody>
     </table></div>
   </div>
-  <p style="font-size:11px;color:#888">Click any cell under a green header to edit. Changes save to Supabase immediately on Enter or click away. Grey columns (A–P) are read-only reference data.</p>`;
+  <p style="font-size:11px;color:#888">Use column dropdowns to filter. Click any green-header cell to edit — saves to Supabase on Enter or click away.</p>`;
 }
 
 function selectPair(pair){
