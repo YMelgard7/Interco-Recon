@@ -705,48 +705,164 @@ function renderPayments(pmts){
 function renderStatements(){
   const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
   const stmtRows=ST.stmtEntity?ST.rows.filter(r=>r.sub_name===ST.stmtEntity):[];
+
+  // Totals for header
   const arT=stmtRows.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
   const apT=stmtRows.filter(r=>!isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+
+  // Group by pair key, then within each pair roll up by period + description
   const byPair={};
   stmtRows.forEach(r=>{
-    const k=r.pair_key||'Other';
-    if(!byPair[k])byPair[k]={pair:k,txs:[],arT:0,apT:0};
+    const pk=r.pair_key||'Other';
+    if(!byPair[pk])byPair[pk]={pair:pk,txs:[],arT:0,apT:0};
     const a=parseFloat(r.amount)||0;
-    if(isAR(r))byPair[k].arT+=a; else byPair[k].apT+=a;
-    byPair[k].txs.push(r);
+    if(isAR(r))byPair[pk].arT+=a; else byPair[pk].apT+=a;
+    byPair[pk].txs.push(r);
   });
+
+  // Roll up txs within a pair by period + description + side (AR/AP)
+  function rollup(txs){
+    const map={};
+    txs.forEach(r=>{
+      const side=isAR(r)?'AR':'AP';
+      const key=`${r.period||''}||${r.description||''}||${side}`;
+      if(!map[key]){
+        map[key]={
+          period:r.period||'',
+          description:r.description||'',
+          side,
+          isAR:isAR(r),
+          currency:r.currency||'',
+          amount:0,
+          count:0,
+          who_owes_who:r.who_owes_who||'',
+          relationship:r.relationship||'',
+        };
+      }
+      map[key].amount+=(parseFloat(r.amount)||0);
+      map[key].count+=1;
+      // keep currency if consistent
+      if(map[key].currency!==r.currency) map[key].currency='Mixed';
+    });
+    // Sort by period then description
+    return Object.values(map).sort((a,b)=>{
+      const ps=sortP(a.period||'',b.period||'');
+      if(ps!==0)return ps;
+      return(a.description||'').localeCompare(b.description||'');
+    });
+  }
+
   return`<div class="filters">
     <select onchange="ST.stmtEntity=this.value;render()" style="width:200px">
       <option value="">Select entity…</option>
       ${entities.map(e=>`<option value="${esc(e)}" ${ST.stmtEntity===e?'selected':''}>${esc(e)}</option>`).join('')}
     </select>
-    ${ST.stmtEntity?`<button class="btn-blue" onclick="exportPDF('stmt')">⬇ PDF</button><button class="btn-green" onclick="exportExcel('stmt')">⬇ Excel</button>`:''}
+    ${ST.stmtEntity?`
+      <button class="btn-blue" onclick="exportPDF('stmt')">⬇ PDF</button>
+      <button class="btn-green" onclick="exportExcel('stmt')">⬇ Excel</button>`:''}
   </div>
+
   ${!ST.stmtEntity?'<div class="card"><div class="empty">Select an entity to view its statement</div></div>':''}
-  ${ST.stmtEntity?`<div class="card">
+
+  ${ST.stmtEntity?`
+  <div class="card">
     <div class="stmt-entity-head">
       <span>${esc(ST.stmtEntity)} — Intercompany Statement</span>
-      <div style="display:flex;gap:16px;font-size:12px">
-        <span>AR: <strong class="ok">${fmt(arT)}</strong></span>
-        <span>AP: <strong class="info">${fmt(apT)}</strong></span>
+      <div style="display:flex;gap:20px;font-size:12px;flex-wrap:wrap">
+        <span>AR Total: <strong class="ok">${fmt(arT)}</strong></span>
+        <span>AP Total: <strong class="info">${fmt(apT)}</strong></span>
         <span>Net: <strong class="${arT-apT>=0?'ok':'warn'}">${fmtD(arT-apT)}</strong></span>
+        <span class="muted">${stmtRows.length} transactions across ${Object.keys(byPair).length} pairs</span>
       </div>
     </div>
-    ${Object.values(byPair).map(group=>`
-      <div class="stmt-section-head">${esc(group.pair)} &nbsp;·&nbsp; AR: ${fmt(group.arT)} &nbsp;·&nbsp; AP: ${fmt(group.apT)} &nbsp;·&nbsp; Net: ${fmtD(group.arT-group.apT)}</div>
-      <div class="scroll-x"><table>
-        <thead><tr><th>Side</th><th>Relationship</th><th class="num">Amount</th><th>Currency</th><th>Period</th><th>Description</th><th>Doc #</th><th>Who Owes Who</th><th>Memo</th></tr></thead>
-        <tbody>${group.txs.map(r=>{const ar=isAR(r);return`<tr style="background:${ar?'#f0fdf4':'#eff6ff'}">
-          <td>${ar?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>':'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}</td>
-          <td style="font-size:11px">${esc(r.relationship)}</td>
-          <td class="num">${fmt(r.amount)}</td>
-          <td>${esc(r.currency)}</td><td>${esc(r.period)}</td><td>${esc(r.description)}</td>
-          <td class="muted" style="font-size:11px">${esc(r.doc_number)}</td>
-          <td style="font-size:11px">${esc(r.who_owes_who)}</td>
-          <td class="muted" style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.memo)}</td>
-        </tr>`}).join('')}</tbody>
-      </table></div>
-    `).join('')}
+
+    ${Object.values(byPair).map(group=>{
+      const rolled=rollup(group.txs);
+      const periods=[...new Set(rolled.map(r=>r.period))].sort(sortP);
+
+      // Period subtotals
+      const periodTotals={};
+      rolled.forEach(r=>{
+        if(!periodTotals[r.period])periodTotals[r.period]={ar:0,ap:0};
+        if(r.isAR)periodTotals[r.period].ar+=r.amount;
+        else      periodTotals[r.period].ap+=r.amount;
+      });
+
+      return`
+      <div class="stmt-section-head" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${esc(group.pair)}</span>
+        <span style="font-size:11px;font-weight:400">
+          AR: <span class="ok">${fmt(group.arT)}</span> &nbsp;
+          AP: <span class="info">${fmt(group.apT)}</span> &nbsp;
+          Net: <span class="${Math.abs(group.arT-group.apT)<0.02?'ok':group.arT-group.apT>0?'ok':'warn'}">${fmtD(group.arT-group.apT)}</span>
+        </span>
+      </div>
+
+      <div class="scroll-x">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:80px">Period</th>
+            <th style="min-width:180px">Description</th>
+            <th style="min-width:70px">Side</th>
+            <th style="min-width:80px">Relationship</th>
+            <th class="num" style="min-width:110px">Amount</th>
+            <th style="min-width:50px">Curr</th>
+            <th class="num" style="min-width:50px;color:#888;font-weight:400">Lines</th>
+            <th style="min-width:140px">Who Owes Who</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${periods.map(per=>{
+            const perRows=rolled.filter(r=>r.period===per);
+            const pt=periodTotals[per];
+            const perNet=pt.ar-pt.ap;
+            return`
+            ${perRows.map((r,ri)=>`
+            <tr style="background:${r.isAR?'#f0fdf4':'#eff6ff'}">
+              ${ri===0?`<td rowspan="${perRows.length}" style="font-weight:500;vertical-align:top;padding-top:9px;border-right:0.5px solid #e5e5e5;background:#fff">${esc(r.period)}</td>`:''}
+              <td>${esc(r.description)}</td>
+              <td>${r.isAR
+                ?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>'
+                :'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}
+              </td>
+              <td style="font-size:11px;color:#666">${esc(r.relationship)}</td>
+              <td class="num" style="font-weight:500">${fmt(r.amount)}</td>
+              <td style="font-size:11px">${esc(r.currency)}</td>
+              <td class="num muted" style="font-size:11px">${r.count}</td>
+              <td style="font-size:11px;color:#666">${esc(r.who_owes_who)}</td>
+            </tr>`).join('')}
+            <tr style="background:#f9fafb;border-top:0.5px solid #d4d4d4">
+              <td style="font-size:11px;font-weight:500;color:#666;padding-left:18px" colspan="3">
+                ${esc(per)} subtotal
+              </td>
+              <td></td>
+              <td class="num ok" style="font-size:11px;font-weight:500">${fmt(pt.ar)}</td>
+              <td class="num info" style="font-size:11px;font-weight:500">${fmt(pt.ap)}</td>
+              <td></td>
+              <td class="num" style="font-size:11px;font-weight:600;color:${Math.abs(perNet)<0.02?'#16a34a':perNet>0?'#16a34a':'#dc2626'}">Net: ${fmtD(perNet)}</td>
+            </tr>`;
+          }).join('')}
+
+          <tr style="background:#f0fdf4;border-top:1.5px solid #86efac">
+            <td style="font-weight:600;font-size:12px" colspan="3">Pair total — ${esc(group.pair)}</td>
+            <td></td>
+            <td class="num ok" style="font-weight:600;font-size:12px">${fmt(group.arT)}</td>
+            <td class="num info" style="font-weight:600;font-size:12px">${fmt(group.apT)}</td>
+            <td></td>
+            <td class="num" style="font-weight:700;font-size:12px;color:${Math.abs(group.arT-group.apT)<0.02?'#16a34a':group.arT-group.apT>0?'#16a34a':'#dc2626'}">Net: ${fmtD(group.arT-group.apT)}</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>`;
+    }).join('')}
+
+    <div style="background:#f0fdf4;border-top:2px solid #16a34a;padding:12px 16px;display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:600">${esc(ST.stmtEntity)} — Grand Total</span>
+      <span style="font-size:13px">AR: <strong class="ok">${fmt(arT)}</strong></span>
+      <span style="font-size:13px">AP: <strong class="info">${fmt(apT)}</strong></span>
+      <span style="font-size:13px">Net: <strong class="${arT-apT>=0?'ok':'warn'}" style="font-size:14px">${fmtD(arT-apT)}</strong></span>
+    </div>
   </div>`:''}`;
 }
 
