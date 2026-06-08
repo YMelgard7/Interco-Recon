@@ -1498,12 +1498,26 @@ async function applyBulkToVisible(field, value){
   render();
 }
 
-function toggleRowSelect(id, e){
-  if(e) e.stopPropagation();
+function toggleRowSelect(id){
   const s = Object.assign({}, ST.rawSelected);
   if(s[id]) delete s[id]; else s[id] = true;
   ST.rawSelected = s;
-  render();
+  // update just the checkbox and row bg without full re-render for speed
+  const row = document.getElementById('raw-row-'+id);
+  if(row){
+    const isNowSel = !!s[id];
+    row.style.background = isNowSel ? '#eff6ff' : '';
+    const cb = row.querySelector('input[type=checkbox]');
+    if(cb) cb.checked = isNowSel;
+    const stickyTds = row.querySelectorAll('td[style*="sticky"]');
+    stickyTds.forEach(td => td.style.background = isNowSel ? '#dbeafe' : '#fff');
+  }
+  // update count in bulk toolbar
+  const countEl = document.getElementById('sel-count-badge');
+  const selCount = Object.keys(s).length;
+  if(countEl) countEl.textContent = selCount > 0 ? selCount+' row'+(selCount>1?'s':'')+' selected' : 'Select rows →';
+  const applyBtn = document.getElementById('apply-sel-btn');
+  if(applyBtn) applyBtn.disabled = selCount === 0;
 }
 
 function toggleSelectAll(rowObjs){
@@ -1649,7 +1663,7 @@ function renderRaw(){
 
     <!-- Selected rows action -->
     <div style="display:flex;align-items:center;gap:6px;border-left:0.5px solid #e5e5e5;padding-left:10px">
-      <span style="font-size:11px;color:#666">${selCount>0?`${selCount} row${selCount>1?'s':''} selected`:'Select rows →'}</span>
+      <span id="sel-count-badge" style="font-size:11px;color:#666">${selCount>0?`${selCount} row${selCount>1?'s':''} selected`:'Select rows →'}</span>
       <select id="bulk-field-sel" style="font-size:11px;padding:4px 7px">
         <option value="invoice_item">Invoice Item</option>
         <option value="include_exclude">Include/Exclude</option>
@@ -1658,7 +1672,7 @@ function renderRaw(){
       <select id="bulk-val-sel" style="font-size:11px;padding:4px 7px">
         ${invItems.map(v=>`<option value="${esc(v)}">${esc(v)||'(clear)'}</option>`).join('')}
       </select>
-      <button class="btn" style="font-size:11px" onclick="applyBulkField(document.getElementById('bulk-field-sel').value,document.getElementById('bulk-val-sel').value)" ${selCount===0?'disabled':''}>
+      <button id="apply-sel-btn" class="btn" style="font-size:11px" onclick="applyBulkField(document.getElementById('bulk-field-sel').value,document.getElementById('bulk-val-sel').value)" ${selCount===0?'disabled':''}>
         Apply to selected (${selCount})
       </button>
     </div>
@@ -1736,9 +1750,10 @@ function renderRaw(){
           const isActive=ST.rawActiveRow===r.id;
           const isSelected=!!ST.rawSelected[r.id];
           const rowBg=isSelected?'#eff6ff':isActive?'#fefce8':'transparent';
-          return`<tr id="raw-row-${r.id}" style="background:${rowBg}" onclick="ST.rawActiveRow='${r.id}';render()">
+          return`<tr id="raw-row-${r.id}" style="background:${rowBg};cursor:default" onclick="if(!event.target.closest('input,select,span[onclick]')){ST.rawActiveRow='${r.id}';render();}">
             <td style="position:sticky;left:0;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:4px">
-              <input type="checkbox" ${isSelected?'checked':''} onchange="toggleRowSelect('${r.id}',event)">
+              <input type="checkbox" ${isSelected?'checked':''} 
+                onclick="event.stopPropagation();toggleRowSelect('${r.id}')">
             </td>
             <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
             <td style="position:sticky;left:192px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-size:11px">${esc(r.period)}</td>
