@@ -149,7 +149,7 @@ const ST={
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
-  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},
+  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:new Set(),rawActiveRow:null,rawShowUntagged:false,
   editingCell:null,
   modal:null,
   uploadStatus:null,uploadMsg:'',uploadProgress:0,
@@ -358,6 +358,11 @@ async function commitEdit(id,field){
   render();
 }
 
+async function commitEditAndNav(id, field, direction){
+  await commitEdit(id, field);
+  navigateCell(id, field, direction);
+}
+
 async function refreshRows(){
   if(!ST.current)return;
   const refreshBtn=document.getElementById('inv-refresh');
@@ -384,7 +389,13 @@ function editableCell(row,field,val){
     }
     return`<input class="inline-edit" id="ie-${id}-${field}" type="${fdef?.type||'text'}" value="${esc(val)}"
       onblur="commitEdit('${id}','${field}')"
-      onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelEdit()">`;
+      onkeydown="
+        if(event.key==='Tab'){event.preventDefault();commitEditAndNav('${id}','${field}',event.shiftKey?'left':'tab');}
+        else if(event.key==='Enter'){event.preventDefault();commitEditAndNav('${id}','${field}','down');}
+        else if(event.key==='ArrowDown'){event.preventDefault();commitEditAndNav('${id}','${field}','down');}
+        else if(event.key==='ArrowUp'){event.preventDefault();commitEditAndNav('${id}','${field}','up');}
+        else if(event.key==='Escape'){cancelEdit();}
+      ">`;
   }
   let display;
   if(field==='include_exclude'){
@@ -1427,35 +1438,142 @@ function renderStatements(){
   </div>`:''}`;
 }
 
+
+// ── DESCRIPTION → INVOICE ITEM AUTO-MAP ──────────────────────────────────
+const DESC_AUTO_MAP = {
+  'Payroll':              'Payroll',
+  'Management Fee':       'Management Fee',
+  'Credit Card Liability':'Corporate Expense Allocation',
+  'Expense Pushdown':     'Corporate Expense Allocation',
+  'Labor Pushdown':       'Labor Expense Allocation',
+  'Vendor Bill Allocation':'Vendor Bill Allocation',
+};
+
+async function autoTagByDescription(){
+  const rows = getRawFiltered();
+  const toUpdate = rows.filter(r => DESC_AUTO_MAP[r.description] && !r.invoice_item);
+  if(!toUpdate.length){ alert('No untagged rows with auto-mappable descriptions found in current filter.'); return; }
+  if(!confirm(`Auto-tag ${toUpdate.length} rows based on their Description field?`)) return;
+  // batch update
+  for(const r of toUpdate){
+    const item = DESC_AUTO_MAP[r.description];
+    r.invoice_item = item; r.edited_by='team'; r.edited_at=new Date().toISOString();
+    await api.patch('transactions',`id=eq.${r.id}`,{invoice_item:item,edited_by:'team',edited_at:r.edited_at});
+  }
+  aggregate(ST.rows);
+  render();
+}
+
+async function applyBulkField(field, value){
+  const selected = [...ST.rawSelected];
+  if(!selected.length){ alert('No rows selected. Check boxes on the left to select rows.'); return; }
+  if(!confirm(`Apply "${value}" to ${selected.length} selected rows?`)) return;
+  for(const id of selected){
+    const row = ST.rows.find(r=>r.id===id);
+    if(!row) continue;
+    row[field]=value; row.edited_by='team'; row.edited_at=new Date().toISOString();
+    await api.patch('transactions',`id=eq.${id}`,{[field]:value,edited_by:'team',edited_at:row.edited_at});
+  }
+  ST.rawSelected=new Set();
+  aggregate(ST.rows);
+  render();
+}
+
+async function applyBulkToVisible(field, value){
+  const rows = getRawFiltered();
+  if(!rows.length){ alert('No rows in current filter.'); return; }
+  if(!confirm(`Apply "${value}" to all ${rows.length} visible rows?`)) return;
+  for(const r of rows){
+    r[field]=value; r.edited_by='team'; r.edited_at=new Date().toISOString();
+    await api.patch('transactions',`id=eq.${r.id}`,{[field]:value,edited_by:'team',edited_at:r.edited_at});
+  }
+  aggregate(ST.rows);
+  render();
+}
+
+function toggleRowSelect(id, e){
+  e.stopPropagation();
+  const s = new Set(ST.rawSelected);
+  if(s.has(id)) s.delete(id); else s.add(id);
+  ST.rawSelected = s;
+  render();
+}
+
+function toggleSelectAll(rowObjs){
+  const ids=(rowObjs||[]).map(r=>r.id||r).filter(Boolean);
+  if(ST.rawSelected.size>=ids.length&&ids.every(id=>ST.rawSelected.has(id))){
+    ST.rawSelected=new Set();
+  } else {
+    ST.rawSelected=new Set(ids);
+  }
+  render();
+}
+
+function getRawFiltered(){
+  let rows = ST.rows;
+  if(ST.rawPair)    rows=rows.filter(r=>r.pair_key===ST.rawPair);
+  if(ST.rawPeriod)  rows=rows.filter(r=>r.period===ST.rawPeriod);
+  if(ST.rawInclude) rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
+  if(ST.rawShowUntagged) rows=rows.filter(r=>!r.invoice_item);
+  if(ST.rawSearch)  rows=rows.filter(r=>Object.values(r).join(' ').toLowerCase().includes(ST.rawSearch.toLowerCase()));
+  const cf=ST.rawColFilters||{};
+  Object.entries(cf).forEach(([k,v])=>{if(v)rows=rows.filter(r=>String(r[k]??'')==v);});
+  return rows;
+}
+
+function navigateCell(id, field, direction){
+  // direction: 'right'|'left'|'down'|'up'|'tab'
+  const allCols=[...READONLY_COLS,...EDITABLE_COLS];
+  const editableCols=EDITABLE_COLS.map(c=>c.key);
+  const rows = getRawFiltered();
+  const PAGE_SIZE_NAV = 100;
+  const page = Math.min(ST.rawPage, Math.ceil(rows.length/PAGE_SIZE_NAV)-1);
+  const pageRows = rows.slice(page*PAGE_SIZE_NAV, (page+1)*PAGE_SIZE_NAV);
+  const rowIdx = pageRows.findIndex(r=>r.id===id);
+  const colIdx = editableCols.indexOf(field);
+
+  let newRow = rowIdx, newCol = colIdx;
+  if(direction==='tab'||direction==='right')     { newCol = colIdx+1; if(newCol>=editableCols.length){newCol=0;newRow++;} }
+  if(direction==='left')                          { newCol = colIdx-1; if(newCol<0){newCol=editableCols.length-1;newRow--;} }
+  if(direction==='down'||direction==='enter')     { newRow = rowIdx+1; }
+  if(direction==='up')                            { newRow = rowIdx-1; }
+
+  if(newRow<0||newRow>=pageRows.length) return;
+  const nextRow = pageRows[newRow];
+  const nextField = editableCols[Math.max(0,Math.min(newCol,editableCols.length-1))];
+  ST.editingCell={id:nextRow.id, field:nextField};
+  ST.rawActiveRow=nextRow.id;
+  render();
+  setTimeout(()=>{
+    const inp=document.getElementById(`ie-${nextRow.id}-${nextField}`);
+    if(inp){inp.focus();if(inp.select)inp.select();}
+    // scroll row into view
+    const tr=document.getElementById(`raw-row-${nextRow.id}`);
+    if(tr)tr.scrollIntoView({block:'nearest'});
+  },20);
+}
+
 function renderRaw(){
-  // build per-column unique values for filter dropdowns
+  const rows = getRawFiltered();
+  const total=rows.length, pages=Math.ceil(total/PAGE_SIZE)||1;
+  const page=Math.min(ST.rawPage,pages-1);
+  const pageRows=rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+  const pairs=[...new Set(ST.rows.map(r=>r.pair_key).filter(Boolean))].sort();
+  const allCols=[...READONLY_COLS,...EDITABLE_COLS];
+  const cf=ST.rawColFilters||{};
+  const activeFilters=Object.values(cf).filter(Boolean).length+[ST.rawSearch,ST.rawPair,ST.rawPeriod,ST.rawInclude].filter(Boolean).length+(ST.rawShowUntagged?1:0);
+  const selCount=ST.rawSelected.size;
+  const allSelected=selCount>0&&selCount===pageRows.length;
+
   function colVals(key){
     return [...new Set(ST.rows.map(r=>String(r[key]??'')).filter(Boolean))].sort();
   }
-
-  // apply all filters
-  let rows=ST.rows;
-  if(ST.rawPair)   rows=rows.filter(r=>r.pair_key===ST.rawPair);
-  if(ST.rawPeriod) rows=rows.filter(r=>r.period===ST.rawPeriod);
-  if(ST.rawInclude)rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
-  if(ST.rawSearch) rows=rows.filter(r=>Object.values(r).join(' ').toLowerCase().includes(ST.rawSearch.toLowerCase()));
-  // per-column filters
-  const cf=ST.rawColFilters||{};
-  Object.entries(cf).forEach(([k,v])=>{if(v)rows=rows.filter(r=>String(r[k]??'')==v);});
-
-  const total=rows.length,pages=Math.ceil(total/PAGE_SIZE)||1;
-  const page=Math.min(ST.rawPage,pages-1);
-  const pageRows=rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
-  const allCols=[...READONLY_COLS,...EDITABLE_COLS];
-  const pairs=[...new Set(ST.rows.map(r=>r.pair_key).filter(Boolean))].sort();
-
-  // column filter header row — one mini-select per column
   function colFilterTh(col){
     const vals=colVals(col.key);
     const cur=cf[col.key]||'';
-    if(vals.length===0) return`<th style="padding:3px 4px;background:#fafafa"></th>`;
     const isEdit=EDITABLE_COLS.includes(col);
     const bg=isEdit?'#f0fdf4':'#f5f5f3';
+    if(!vals.length)return`<th style="padding:3px 4px;background:${bg}"></th>`;
     return`<th style="padding:3px 4px;background:${bg}">
       <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%;max-width:120px"
         onchange="ST.rawColFilters=ST.rawColFilters||{};ST.rawColFilters['${col.key}']=this.value;ST.rawPage=0;render()">
@@ -1465,10 +1583,13 @@ function renderRaw(){
     </th>`;
   }
 
-  const activeFilters=Object.values(cf).filter(Boolean).length;
+  // Invoice item options for bulk selects
+  const invItems=['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation'];
 
-  return`<div class="filters">
-    <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:190px">
+  return`
+  <!-- Top filter bar -->
+  <div class="filters" style="margin-bottom:8px">
+    <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:180px">
     <select onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
       <option value="">All pairs</option>
       ${pairs.map(p=>`<option value="${esc(p)}" ${ST.rawPair===p?'selected':''}>${esc(p)}</option>`).join('')}
@@ -1482,43 +1603,128 @@ function renderRaw(){
       <option value="Include" ${ST.rawInclude==='Include'?'selected':''}>Include only</option>
       <option value="Exclude" ${ST.rawInclude==='Exclude'?'selected':''}>Exclude only</option>
     </select>
-    ${activeFilters>0?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="ST.rawColFilters={};ST.rawSearch='';ST.rawPair='';ST.rawPeriod='';ST.rawInclude='';ST.rawPage=0;render()">✕ Clear all filters (${activeFilters+[ST.rawSearch,ST.rawPair,ST.rawPeriod,ST.rawInclude].filter(Boolean).length})</button>`:''}
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">
+      <input type="checkbox" ${ST.rawShowUntagged?'checked':''} onchange="ST.rawShowUntagged=this.checked;ST.rawPage=0;render()">
+      Untagged only
+    </label>
+    ${activeFilters>0?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="ST.rawColFilters={};ST.rawSearch='';ST.rawPair='';ST.rawPeriod='';ST.rawInclude='';ST.rawShowUntagged=false;ST.rawPage=0;render()">✕ Clear all (${activeFilters})</button>`:''}
     <span class="muted" style="font-size:12px;margin-left:auto">${total.toLocaleString()} rows</span>
   </div>
+
+  <!-- Bulk action toolbar -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px 14px;background:#fff;border:0.5px solid #e5e5e5;border-radius:10px">
+    <span style="font-size:12px;font-weight:500;color:#111">Bulk actions:</span>
+
+    <!-- Auto-tag -->
+    <button class="btn-dark" style="font-size:11px;padding:5px 10px" onclick="autoTagByDescription()">
+      ⚡ Auto-tag by description
+    </button>
+
+    <!-- Selected rows action -->
+    <div style="display:flex;align-items:center;gap:6px;border-left:0.5px solid #e5e5e5;padding-left:10px">
+      <span style="font-size:11px;color:#666">${selCount>0?`${selCount} row${selCount>1?'s':''} selected`:'Select rows →'}</span>
+      <select id="bulk-field-sel" style="font-size:11px;padding:4px 7px">
+        <option value="invoice_item">Invoice Item</option>
+        <option value="include_exclude">Include/Exclude</option>
+        <option value="who_owes_who">Who Owes Who</option>
+      </select>
+      <select id="bulk-val-sel" style="font-size:11px;padding:4px 7px">
+        ${invItems.map(v=>`<option value="${esc(v)}">${esc(v)||'(clear)'}</option>`).join('')}
+      </select>
+      <button class="btn" style="font-size:11px" onclick="applyBulkField(document.getElementById('bulk-field-sel').value,document.getElementById('bulk-val-sel').value)" ${selCount===0?'disabled':''}>
+        Apply to selected (${selCount})
+      </button>
+    </div>
+
+    <!-- Apply to all visible -->
+    <div style="display:flex;align-items:center;gap:6px;border-left:0.5px solid #e5e5e5;padding-left:10px">
+      <select id="vis-val-sel" style="font-size:11px;padding:4px 7px">
+        ${invItems.map(v=>`<option value="${esc(v)}">${esc(v)||'(clear)'}</option>`).join('')}
+      </select>
+      <button class="btn" style="font-size:11px" onclick="applyBulkToVisible('invoice_item',document.getElementById('vis-val-sel').value)">
+        Apply to all ${total.toLocaleString()} visible rows
+      </button>
+    </div>
+  </div>
+
+  <!-- Main grid -->
   <div class="card">
     <div class="card-head">
       <div>
-        <span class="card-title">Raw Data — columns A–AB</span>
+        <span class="card-title">Raw Data — columns A–AB + Invoice Item</span>
         <span style="font-size:11px;color:#888;margin-left:10px">
-          <span style="background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500">green</span> = editable (Q–AB) &nbsp;
-          <span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 5px;border-radius:3px;font-size:10px">yellow</span> = edited
+          <span style="background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500">green</span> = editable &nbsp;
+          <span style="background:#fef9c3;border:1px dashed #ca8a04;padding:1px 5px;border-radius:3px;font-size:10px">yellow</span> = edited &nbsp;
+          Tab/↑↓/Enter to navigate
         </span>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <span class="muted" style="font-size:11px">Page ${page+1} of ${pages}</span>
+        <span class="muted" style="font-size:11px">Page ${page+1}/${pages}</span>
         <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev</button>
         <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
       </div>
     </div>
     <div class="scroll-x scroll-y"><table>
       <thead>
+        <!-- Column headers -->
         <tr>
-          ${READONLY_COLS.map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
+          <th style="width:32px;background:#f5f5f3;position:sticky;left:0;z-index:3">
+            <input type="checkbox" ${allSelected?'checked':''} onchange="toggleSelectAll(pageRows_IDS)" title="Select all on page">
+          </th>
+          <th style="min-width:160px;position:sticky;left:32px;z-index:3;background:#fafafa">Pair Key</th>
+          <th style="min-width:80px;position:sticky;left:192px;z-index:3;background:#fafafa">Period</th>
+          ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
           ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
         </tr>
+        <!-- Column filter row -->
         <tr>
-          ${READONLY_COLS.map(c=>colFilterTh(c)).join('')}
+          <th style="background:#f5f5f3;position:sticky;left:0;z-index:3"></th>
+          <th style="position:sticky;left:32px;z-index:3;background:#f5f5f3;padding:3px 4px">
+            <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
+              onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
+              <option value="">All</option>
+              ${pairs.map(p=>`<option value="${esc(p)}" ${ST.rawPair===p?'selected':''}>${esc(p)}</option>`).join('')}
+            </select>
+          </th>
+          <th style="position:sticky;left:192px;z-index:3;background:#f5f5f3;padding:3px 4px">
+            <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
+              onchange="ST.rawPeriod=this.value;ST.rawPage=0;render()">
+              <option value="">All</option>
+              ${ST.periods.map(p=>`<option value="${p}" ${ST.rawPeriod===p?'selected':''}>${p}</option>`).join('')}
+            </select>
+          </th>
+          ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>colFilterTh(c)).join('')}
           ${EDITABLE_COLS.map(c=>colFilterTh(c)).join('')}
         </tr>
       </thead>
-      <tbody>${pageRows.map(r=>`<tr>
-        ${READONLY_COLS.map(c=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
-        ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
-      </tr>`).join('')}
-      ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length}" class="empty">No rows match filters</td></tr>`:''}</tbody>
+      <tbody>
+        ${(()=>{window.pageRows_IDS=${JSON.stringify(pageRows.map(r=>({id:r.id})))};return '';})()}
+        ${pageRows.map(r=>{
+          const isActive=ST.rawActiveRow===r.id;
+          const isSelected=ST.rawSelected.has(r.id);
+          const rowBg=isSelected?'#eff6ff':isActive?'#fefce8':'transparent';
+          return`<tr id="raw-row-${r.id}" style="background:${rowBg}" onclick="ST.rawActiveRow='${r.id}';render()">
+            <td style="position:sticky;left:0;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:4px">
+              <input type="checkbox" ${isSelected?'checked':''} onchange="toggleRowSelect('${r.id}',event)">
+            </td>
+            <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
+            <td style="position:sticky;left:192px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-size:11px">${esc(r.period)}</td>
+            ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
+            ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
+          </tr>`;
+        }).join('')}
+        ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length+3}" class="empty">No rows match filters</td></tr>`:''}
+      </tbody>
     </table></div>
   </div>
-  <p style="font-size:11px;color:#888">Use column dropdowns to filter. Click any green-header cell to edit — saves to Supabase on Enter or click away.</p>`;
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+    <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period columns are frozen</p>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev page</button>
+      <span style="font-size:12px;color:#666;padding:5px 8px">Page ${page+1} of ${pages}</span>
+      <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next page →</button>
+    </div>
+  </div>`;
 }
 
 function selectPair(pair){
