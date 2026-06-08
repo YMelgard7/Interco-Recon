@@ -146,7 +146,7 @@ const EDITABLE_COLS=[
   {key:'who_is_owed',        label:'Y Who Is Owed',        type:'text'},
   {key:'include_exclude',    label:'Z Include/Exclude',    type:'select',options:['Include','Exclude']},
   {key:'description',        label:'AA Description',       type:'text'},
-  {key:'column1',            label:'AB Entity Stmt Tagging',           type:'text'},
+  {key:'column1',            label:'AB Entity Stmt Tagging', type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments','IC Settlement']},
   {key:'invoice_item',       label:'AC Invoice Tagging',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments']},
 ];
 
@@ -155,7 +155,7 @@ const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
-  stmtEntity:null,stmtPeriods:[],settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
+  stmtEntity:null,stmtPeriods:[],settlementView:'all',settlementEntity:null,settingsView:false,customCols:[],jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
   rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:{},rawActiveRow:null,rawShowUntagged:false,rawFullscreen:false,
   editingCell:null,
   modal:null,
@@ -333,6 +333,7 @@ async function loadUpload(upload){
 
 async function init(){
   try{
+    await loadCustomCols();
     ST.uploads=await api.get('uploads','order=created_at.desc');
     if(ST.uploads.length===0){ST.screen='upload';ST.uploadStatus=null;render();return;}
     await loadUpload(ST.uploads[0]);
@@ -637,6 +638,7 @@ function renderDashboard(){
     <button class="tab ${ST.view==='statements'?'active':''}" onclick="ST.view='statements';render()">Entity Statements</button>
     <button class="tab ${ST.view==='raw'?'active':''}" onclick="ST.view='raw';render()">Raw Data</button>
     <button class="tab ${ST.view==='invoice'?'active':''}" onclick="ST.view='invoice';render()">🧾 Invoice</button>
+    <button class="tab ${ST.view==='settings'?'active':''}" onclick="ST.view='settings';render()">⚙ Settings</button>
   </div>
   ${ST.view==='hub'?renderHub(hub):''}
   ${ST.view==='summary'?renderSummary(f):''}
@@ -646,7 +648,8 @@ function renderDashboard(){
   ${ST.view==='settlement'?renderSettlement():''}
   ${ST.view==='statements'?renderStatements():''}
   ${ST.view==='raw'?renderRaw():''}
-  ${ST.view==='invoice'?renderInvoice():''}`;
+  ${ST.view==='invoice'?renderInvoice():''}
+  ${ST.view==='settings'?renderSettings():''}`;
 }
 
 function renderHub(hub){
@@ -1284,7 +1287,11 @@ function renderSettlement(){
 function renderStatements(){
   const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
   const activePeriods=ST.stmtPeriods.length>0?ST.stmtPeriods:ST.periods;
-  const stmtRows=ST.stmtEntity?ST.rows.filter(r=>r.sub_name===ST.stmtEntity&&activePeriods.includes(r.period)):[];
+  const stmtRows=ST.stmtEntity?ST.rows.filter(r=>
+    r.sub_name===ST.stmtEntity &&
+    activePeriods.includes(r.period) &&
+    (r.include_exclude||'Include')==='Include'
+  ):[];
 
   // Totals for header
   const arT=stmtRows.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
@@ -2197,6 +2204,190 @@ function renderInvoice(){
           </div>
         </div>
       </div>`}
+    </div>
+  </div>`;
+}
+
+
+// ── CUSTOM DROPDOWN COLUMNS ─────────────────────────────────────────────
+// Stored in Supabase tags_config with a 'col_config' prefix
+
+async function loadCustomCols(){
+  try{
+    const rows = await api.get('tags_config','tag=like.col_config:%&order=sort_order.asc');
+    ST.customCols = rows.map(r=>{
+      try{ return JSON.parse(r.tag.replace('col_config:','')); }
+      catch(e){ return null; }
+    }).filter(Boolean);
+  }catch(e){ ST.customCols=[]; }
+}
+
+async function saveCustomCol(col){
+  const tag = 'col_config:' + JSON.stringify(col);
+  await api.post('tags_config',{tag, color:'#374151', sort_order:200+ST.customCols.length});
+  await loadCustomCols();
+}
+
+async function deleteCustomCol(colKey){
+  const rows = await api.get('tags_config',`tag=like.col_config:%`);
+  for(const r of rows){
+    try{
+      const parsed = JSON.parse(r.tag.replace('col_config:',''));
+      if(parsed.key===colKey){
+        await api.del('tags_config',`id=eq.${r.id}`);
+      }
+    }catch(e){}
+  }
+  await loadCustomCols();
+  render();
+}
+
+async function addCustomCol(){
+  const label = document.getElementById('new-col-label')?.value?.trim();
+  const opts  = document.getElementById('new-col-opts')?.value?.trim();
+  if(!label){ alert('Column name is required'); return; }
+  const key = 'custom_' + label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  const options = opts ? opts.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  const col = {key, label:'AD+ '+label, type: options.length?'select':'text', options:['', ...options]};
+  await saveCustomCol(col);
+  document.getElementById('new-col-label').value='';
+  document.getElementById('new-col-opts').value='';
+  render();
+}
+
+async function addOptionToCol(colKey, newOpt){
+  if(!newOpt) return;
+  const rows = await api.get('tags_config',`tag=like.col_config:%`);
+  for(const r of rows){
+    try{
+      const parsed = JSON.parse(r.tag.replace('col_config:',''));
+      if(parsed.key===colKey){
+        parsed.options = [...(parsed.options||[])];
+        if(!parsed.options.includes(newOpt)) parsed.options.push(newOpt);
+        await api.patch('tags_config',`id=eq.${r.id}`,{tag:'col_config:'+JSON.stringify(parsed)});
+        await loadCustomCols();
+        render();
+        return;
+      }
+    }catch(e){}
+  }
+}
+
+function renderSettings(){
+  // All current dropdown columns (built-in + custom)
+  const builtInDropdowns = [
+    {key:'include_exclude',  label:'Z Include/Exclude',       options:['Include','Exclude']},
+    {key:'column1',          label:'AB Entity Stmt Tagging',  options:['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments','IC Settlement']},
+    {key:'invoice_item',     label:'AC Invoice Tagging',      options:['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments']},
+  ];
+
+  return`
+  <div style="max-width:700px">
+    <h2 style="font-size:16px;font-weight:500;margin-bottom:4px">Settings</h2>
+    <p style="font-size:12px;color:#666;margin-bottom:1.5rem">Manage dropdown columns and options. Changes apply to all users.</p>
+
+    <!-- Built-in dropdowns -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head"><span class="card-title">Built-in dropdown columns</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:14px">
+        ${builtInDropdowns.map(col=>`
+        <div style="border:0.5px solid #e5e5e5;border-radius:8px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:500;margin-bottom:8px">${esc(col.label)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+            ${col.options.map(o=>`<span style="font-size:11px;padding:2px 9px;border-radius:100px;background:#f0f0f0;color:#333">${esc(o)}</span>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px">
+            <input id="add-opt-${col.key}" type="text" placeholder="Add new option…" style="flex:1;font-size:12px;padding:5px 8px;border-radius:7px;border:0.5px solid #d4d4d4">
+            <button class="btn-dark" style="font-size:11px" onclick="(async()=>{
+              const v=document.getElementById('add-opt-${col.key}').value.trim();
+              if(!v)return;
+              // For built-in cols update EDITABLE_COLS options in memory
+              const col=EDITABLE_COLS.find(c=>c.key==='${col.key}');
+              if(col&&col.options&&!col.options.includes(v)){col.options.push(v);}
+              document.getElementById('add-opt-${col.key}').value='';
+              render();
+            })()">+ Add</button>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Custom columns -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head">
+        <span class="card-title">Custom dropdown columns</span>
+        <span style="font-size:11px;color:#666">Added as columns after AB in Raw Data</span>
+      </div>
+      <div style="padding:14px">
+        ${ST.customCols.length===0?`<p style="font-size:12px;color:#999;margin-bottom:14px">No custom columns yet — add one below</p>`:`
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+          ${ST.customCols.map(col=>`
+          <div style="border:0.5px solid #e5e5e5;border-radius:8px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:13px;font-weight:500">${esc(col.label)}</span>
+              <button class="btn" style="font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="if(confirm('Delete this column?'))deleteCustomCol('${col.key}')">Delete</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+              ${(col.options||[]).filter(o=>o).map(o=>`<span style="font-size:11px;padding:2px 9px;border-radius:100px;background:#f0f0f0;color:#333">${esc(o)}</span>`).join('')}
+            </div>
+            <div style="display:flex;gap:8px">
+              <input id="add-copt-${col.key}" type="text" placeholder="Add option…" style="flex:1;font-size:12px;padding:5px 8px;border-radius:7px;border:0.5px solid #d4d4d4">
+              <button class="btn-dark" style="font-size:11px" onclick="addOptionToCol('${col.key}',document.getElementById('add-copt-${col.key}').value.trim())">+ Add</button>
+            </div>
+          </div>`).join('')}
+        </div>`}
+
+        <!-- Add new column -->
+        <div style="background:#f5f5f3;border-radius:8px;padding:14px;border:0.5px dashed #d4d4d4">
+          <div style="font-size:12px;font-weight:500;margin-bottom:10px">Add new dropdown column</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div>
+              <div style="font-size:11px;color:#666;margin-bottom:3px">Column name <span style="color:#dc2626">*</span></div>
+              <input id="new-col-label" type="text" placeholder="e.g. Payment Status" style="width:100%;font-size:12px;padding:6px 9px;border-radius:7px;border:0.5px solid #d4d4d4">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#666;margin-bottom:3px">Dropdown options (comma-separated, leave blank for free text)</div>
+              <input id="new-col-opts" type="text" placeholder="e.g. Pending, Approved, Rejected" style="width:100%;font-size:12px;padding:6px 9px;border-radius:7px;border:0.5px solid #d4d4d4">
+            </div>
+            <button class="btn-dark" style="align-self:flex-start" onclick="addCustomCol()">+ Add column</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column mapping reference -->
+    <div class="card">
+      <div class="card-head"><span class="card-title">Column reference</span></div>
+      <div style="padding:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid #e5e5e5;font-weight:500;color:#666">Column</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid #e5e5e5;font-weight:500;color:#666">Field</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid #e5e5e5;font-weight:500;color:#666">Type</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:0.5px solid #e5e5e5;font-weight:500;color:#666">Used by</th>
+          </tr></thead>
+          <tbody>
+            ${[
+              ['Z','Include/Exclude','Dropdown','All views — excludes row when set to Exclude'],
+              ['AB','Entity Stmt Tagging','Dropdown','Entity Statements tab — groups transactions'],
+              ['AC','Invoice Tagging','Dropdown','Invoice tab — drives invoice line items'],
+            ].map(([col,field,type,use])=>`
+            <tr style="border-bottom:0.5px solid #f0f0f0">
+              <td style="padding:6px 8px;font-weight:600;color:#2563eb">${col}</td>
+              <td style="padding:6px 8px">${field}</td>
+              <td style="padding:6px 8px"><span style="background:#f0fdf4;color:#16a34a;font-size:11px;padding:2px 6px;border-radius:4px">${type}</span></td>
+              <td style="padding:6px 8px;color:#666;font-size:11px">${use}</td>
+            </tr>`).join('')}
+            ${ST.customCols.map((col,i)=>`
+            <tr style="border-bottom:0.5px solid #f0f0f0;background:#fafafa">
+              <td style="padding:6px 8px;font-weight:600;color:#7c3aed">AD+${i>0?i:''}</td>
+              <td style="padding:6px 8px">${esc(col.label)}</td>
+              <td style="padding:6px 8px"><span style="background:#f5f3ff;color:#7c3aed;font-size:11px;padding:2px 6px;border-radius:4px">Custom</span></td>
+              <td style="padding:6px 8px;color:#666;font-size:11px">Raw Data</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>`;
 }
