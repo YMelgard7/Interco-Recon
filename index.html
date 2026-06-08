@@ -1650,9 +1650,7 @@ function renderRaw(){
     <span class="muted" style="font-size:12px;margin-left:auto">${total.toLocaleString()} rows</span>
   </div>`;
 
-  return`
-  ${ST.rawFullscreen?'':'<!-- Top filter bar -->'+filterBar}
-  <!-- Bulk action toolbar -->
+  const bulkToolbar=`<!-- Bulk action toolbar -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px 14px;background:#fff;border:0.5px solid #e5e5e5;border-radius:10px">
     <span style="font-size:12px;font-weight:500;color:#111">Bulk actions:</span>
 
@@ -1686,7 +1684,12 @@ function renderRaw(){
         Apply to all ${total.toLocaleString()} visible rows
       </button>
     </div>
-  </div>
+  </div>`;
+
+  return`
+  ${ST.rawFullscreen?'':'<!-- Top filter bar -->'+filterBar}
+  ${ST.rawFullscreen?'':bulkToolbar}
+
 
   <!-- Main grid -->
   <div class="${ST.rawFullscreen?'raw-fullscreen':'card'}">
@@ -1708,7 +1711,7 @@ function renderRaw(){
         </button>
       </div>
     </div>
-    ${ST.rawFullscreen?`<div class="raw-fs-body">`:''}
+    ${ST.rawFullscreen?`<div class="raw-fs-body">${filterBar}${bulkToolbar}`:''}
     <div class="${ST.rawFullscreen?'':'scroll-x scroll-y'}" style="${ST.rawFullscreen?'flex:1;overflow:auto;':''}"><table style="table-layout:fixed;min-width:2600px">
       <colgroup>
         <col style="width:36px">
