@@ -73,6 +73,11 @@ textarea{font-size:12px;padding:7px 9px;border-radius:7px;border:0.5px solid #d4
 .excl{color:#dc2626;font-size:11px;font-weight:500}
 .raw-td{cursor:default;transition:background .12s}
 .raw-td:hover{background:#fffbeb;position:relative;z-index:4;border-radius:3px;box-shadow:0 2px 10px rgba(0,0,0,.1);white-space:normal;word-break:break-word;overflow:visible;min-width:180px}
+.raw-fullscreen{position:fixed;inset:0;z-index:200;background:#f5f5f3;display:flex;flex-direction:column;padding:0}
+.raw-fullscreen .raw-fs-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#fff;border-bottom:0.5px solid #e5e5e5;flex-shrink:0;flex-wrap:wrap;gap:8px}
+.raw-fullscreen .raw-fs-body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px;gap:8px;min-height:0}
+.raw-fullscreen .scroll-x.scroll-y{flex:1;max-height:none!important;overflow:auto}
+.raw-fullscreen table{min-width:2600px}
 </style>
 </head>
 <body>
@@ -151,7 +156,7 @@ const ST={
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
-  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:new Set(),rawActiveRow:null,rawShowUntagged:false,
+  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:{},rawActiveRow:null,rawShowUntagged:false,rawFullscreen:false,
   editingCell:null,
   modal:null,
   uploadStatus:null,uploadMsg:'',uploadProgress:0,
@@ -1467,7 +1472,7 @@ async function autoTagByDescription(){
 }
 
 async function applyBulkField(field, value){
-  const selected = [...ST.rawSelected];
+  const selected = Object.keys(ST.rawSelected);
   if(!selected.length){ alert('No rows selected. Check boxes on the left to select rows.'); return; }
   if(!confirm(`Apply "${value}" to ${selected.length} selected rows?`)) return;
   for(const id of selected){
@@ -1476,7 +1481,7 @@ async function applyBulkField(field, value){
     row[field]=value; row.edited_by='team'; row.edited_at=new Date().toISOString();
     await api.patch('transactions',`id=eq.${id}`,{[field]:value,edited_by:'team',edited_at:row.edited_at});
   }
-  ST.rawSelected=new Set();
+  ST.rawSelected={};
   aggregate(ST.rows);
   render();
 }
@@ -1494,19 +1499,22 @@ async function applyBulkToVisible(field, value){
 }
 
 function toggleRowSelect(id, e){
-  e.stopPropagation();
-  const s = new Set(ST.rawSelected);
-  if(s.has(id)) s.delete(id); else s.add(id);
+  if(e) e.stopPropagation();
+  const s = Object.assign({}, ST.rawSelected);
+  if(s[id]) delete s[id]; else s[id] = true;
   ST.rawSelected = s;
   render();
 }
 
 function toggleSelectAll(rowObjs){
   const ids=(rowObjs||[]).map(r=>r.id||r).filter(Boolean);
-  if(ST.rawSelected.size>=ids.length&&ids.every(id=>ST.rawSelected.has(id))){
-    ST.rawSelected=new Set();
+  const allChk=ids.length>0&&ids.every(id=>ST.rawSelected[id]);
+  if(allChk){
+    ST.rawSelected={};
   } else {
-    ST.rawSelected=new Set(ids);
+    const s={};
+    ids.forEach(id=>s[id]=true);
+    ST.rawSelected=s;
   }
   render();
 }
@@ -1516,10 +1524,13 @@ function toggleSelectAllVisible(){
   const page=Math.min(ST.rawPage,Math.ceil(rows.length/PAGE_SZ)-1);
   const pageRows=rows.slice(page*PAGE_SZ,(page+1)*PAGE_SZ);
   const ids=pageRows.map(r=>r.id);
-  if(ids.length>0&&ids.every(id=>ST.rawSelected.has(id))){
-    ST.rawSelected=new Set();
+  const allChk=ids.length>0&&ids.every(id=>ST.rawSelected[id]);
+  if(allChk){
+    ST.rawSelected={};
   } else {
-    ST.rawSelected=new Set(ids);
+    const s={};
+    ids.forEach(id=>s[id]=true);
+    ST.rawSelected=s;
   }
   render();
 }
@@ -1577,8 +1588,8 @@ function renderRaw(){
   const allCols=[...READONLY_COLS,...EDITABLE_COLS];
   const cf=ST.rawColFilters||{};
   const activeFilters=Object.values(cf).filter(Boolean).length+[ST.rawSearch,ST.rawPair,ST.rawPeriod,ST.rawInclude].filter(Boolean).length+(ST.rawShowUntagged?1:0);
-  const selCount=ST.rawSelected.size;
-  const allSelected=selCount>0&&pageRows.every(r=>ST.rawSelected.has(r.id));
+  const selCount=Object.keys(ST.rawSelected).length;
+  const allSelected=selCount>0&&pageRows.every(r=>ST.rawSelected[r.id]);
 
   function colVals(key){
     return [...new Set(ST.rows.map(r=>String(r[key]??'')).filter(Boolean))].sort();
@@ -1601,9 +1612,8 @@ function renderRaw(){
   // Invoice item options for bulk selects
   const invItems=['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments'];
 
-  return`
-  <!-- Top filter bar -->
-  <div class="filters" style="margin-bottom:8px">
+  // Build filter bar HTML (shared between normal and fullscreen)
+  const filterBar = `<div class="filters" style="margin-bottom:${ST.rawFullscreen?'0':'8px'};flex-wrap:wrap">
     <input type="search" placeholder="Search all fields…" value="${esc(ST.rawSearch)}" oninput="ST.rawSearch=this.value;ST.rawPage=0;render()" style="width:180px">
     <select onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
       <option value="">All pairs</option>
@@ -1624,8 +1634,10 @@ function renderRaw(){
     </label>
     ${activeFilters>0?`<button class="btn" style="color:#dc2626;border-color:#fca5a5" onclick="ST.rawColFilters={};ST.rawSearch='';ST.rawPair='';ST.rawPeriod='';ST.rawInclude='';ST.rawShowUntagged=false;ST.rawPage=0;render()">✕ Clear all (${activeFilters})</button>`:''}
     <span class="muted" style="font-size:12px;margin-left:auto">${total.toLocaleString()} rows</span>
-  </div>
+  </div>`;
 
+  return`
+  ${ST.rawFullscreen?'':'<!-- Top filter bar -->'+filterBar}
   <!-- Bulk action toolbar -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px 14px;background:#fff;border:0.5px solid #e5e5e5;border-radius:10px">
     <span style="font-size:12px;font-weight:500;color:#111">Bulk actions:</span>
@@ -1679,7 +1691,7 @@ function renderRaw(){
         <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
       </div>
     </div>
-    <div class="scroll-x scroll-y"><table style="table-layout:fixed;min-width:2600px">
+    <div class="${ST.rawFullscreen?'':'scroll-x scroll-y'}" style="${ST.rawFullscreen?'flex:1;overflow:auto;':''}"><table style="table-layout:fixed;min-width:2600px">
       <colgroup>
         <col style="width:36px">
         <col style="width:165px">
@@ -1722,7 +1734,7 @@ function renderRaw(){
       <tbody>
         ${pageRows.map(r=>{
           const isActive=ST.rawActiveRow===r.id;
-          const isSelected=ST.rawSelected.has(r.id);
+          const isSelected=!!ST.rawSelected[r.id];
           const rowBg=isSelected?'#eff6ff':isActive?'#fefce8':'transparent';
           return`<tr id="raw-row-${r.id}" style="background:${rowBg}" onclick="ST.rawActiveRow='${r.id}';render()">
             <td style="position:sticky;left:0;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:4px">
@@ -1738,14 +1750,16 @@ function renderRaw(){
       </tbody>
     </table></div>
   </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-    <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period columns are frozen</p>
+  ${ST.rawFullscreen?'</div></div>':''}
+  ${!ST.rawFullscreen?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+    <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period frozen</p>
     <div style="display:flex;gap:6px">
-      <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev page</button>
+      <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev</button>
       <span style="font-size:12px;color:#666;padding:5px 8px">Page ${page+1} of ${pages}</span>
-      <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next page →</button>
+      <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
     </div>
-  </div>`;
+  </div>`:''}
+  `;
 }
 
 function selectPair(pair){
