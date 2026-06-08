@@ -1689,8 +1689,8 @@ function renderRaw(){
   </div>
 
   <!-- Main grid -->
-  <div class="card">
-    <div class="card-head">
+  <div class="${ST.rawFullscreen?'raw-fullscreen':'card'}">
+    <div class="${ST.rawFullscreen?'raw-fs-header':'card-head'}">
       <div>
         <span class="card-title">Raw Data — columns A–AB + Invoice Item</span>
         <span style="font-size:11px;color:#888;margin-left:10px">
@@ -1703,8 +1703,12 @@ function renderRaw(){
         <span class="muted" style="font-size:11px">Page ${page+1}/${pages}</span>
         <button class="btn" onclick="ST.rawPage=Math.max(0,ST.rawPage-1);render()" ${page===0?'disabled':''}>← Prev</button>
         <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
+        <button class="btn" onclick="ST.rawFullscreen=!ST.rawFullscreen;render()" style="font-size:12px;padding:4px 10px;font-weight:500" title="${ST.rawFullscreen?'Exit fullscreen':'Expand to fullscreen'}">
+          ${ST.rawFullscreen?'✕ Exit fullscreen':'⛶ Fullscreen'}
+        </button>
       </div>
     </div>
+    ${ST.rawFullscreen?`<div class="raw-fs-body">`:''}
     <div class="${ST.rawFullscreen?'':'scroll-x scroll-y'}" style="${ST.rawFullscreen?'flex:1;overflow:auto;':''}"><table style="table-layout:fixed;min-width:2600px">
       <colgroup>
         <col style="width:36px">
