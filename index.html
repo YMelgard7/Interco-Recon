@@ -140,7 +140,7 @@ const EDITABLE_COLS=[
   {key:'include_exclude',    label:'Z Include/Exclude',    type:'select',options:['Include','Exclude']},
   {key:'description',        label:'AA Description',       type:'text'},
   {key:'column1',            label:'AB Column1',           type:'text'},
-  {key:'invoice_item',       label:'AC Invoice Item',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation']},
+  {key:'invoice_item',       label:'AC Invoice Item',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments']},
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -1443,7 +1443,7 @@ function renderStatements(){
 const DESC_AUTO_MAP = {
   'Payroll':              'Payroll',
   'Management Fee':       'Management Fee',
-  'Credit Card Liability':'Corporate Expense Allocation',
+  'Credit Card Liability':'Expense Reimbursement',
   'Expense Pushdown':     'Corporate Expense Allocation',
   'Labor Pushdown':       'Labor Expense Allocation',
   'Vendor Bill Allocation':'Vendor Bill Allocation',
@@ -1597,7 +1597,7 @@ function renderRaw(){
   }
 
   // Invoice item options for bulk selects
-  const invItems=['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation'];
+  const invItems=['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments'];
 
   return`
   <!-- Top filter bar -->
@@ -1756,9 +1756,10 @@ const ITEM_DESCRIPTIONS={
   'Corporate Expense Allocation':'Allocation of corporate-incurred operating expenses (including technology, marketing, and administrative costs) to the JV for the applicable billing period.',
   'Labor Expense Allocation':'Allocation of corporate-incurred labor expenses to the JV for the applicable billing period.',
   'Vendor Bill Allocation':'', // dynamically built from memos
+  'Misrouted Payments':'Cash received in the wrong subsidiary.',
 };
 
-const ITEM_ORDER=['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation'];
+const ITEM_ORDER=['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments'];
 
 function buildInvoiceData(jvEntity, period){
   // Step 1: find ALL rows for this pair (both AR and AP sides, both sub_names)
