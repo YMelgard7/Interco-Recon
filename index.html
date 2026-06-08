@@ -1508,6 +1508,19 @@ function toggleSelectAll(rowObjs){
   }
   render();
 }
+function toggleSelectAllVisible(){
+  const rows=getRawFiltered();
+  const PAGE_SZ=100;
+  const page=Math.min(ST.rawPage,Math.ceil(rows.length/PAGE_SZ)-1);
+  const pageRows=rows.slice(page*PAGE_SZ,(page+1)*PAGE_SZ);
+  const ids=pageRows.map(r=>r.id);
+  if(ids.length>0&&ids.every(id=>ST.rawSelected.has(id))){
+    ST.rawSelected=new Set();
+  } else {
+    ST.rawSelected=new Set(ids);
+  }
+  render();
+}
 
 function getRawFiltered(){
   let rows = ST.rows;
@@ -1563,7 +1576,7 @@ function renderRaw(){
   const cf=ST.rawColFilters||{};
   const activeFilters=Object.values(cf).filter(Boolean).length+[ST.rawSearch,ST.rawPair,ST.rawPeriod,ST.rawInclude].filter(Boolean).length+(ST.rawShowUntagged?1:0);
   const selCount=ST.rawSelected.size;
-  const allSelected=selCount>0&&selCount===pageRows.length;
+  const allSelected=selCount>0&&pageRows.every(r=>ST.rawSelected.has(r.id));
 
   function colVals(key){
     return [...new Set(ST.rows.map(r=>String(r[key]??'')).filter(Boolean))].sort();
@@ -1669,7 +1682,7 @@ function renderRaw(){
         <!-- Column headers -->
         <tr>
           <th style="width:32px;background:#f5f5f3;position:sticky;left:0;z-index:3">
-            <input type="checkbox" ${allSelected?'checked':''} onchange="toggleSelectAll(pageRows_IDS)" title="Select all on page">
+            <input type="checkbox" ${allSelected?'checked':''} onchange="toggleSelectAllVisible()" title="Select all on page">
           </th>
           <th style="min-width:160px;position:sticky;left:32px;z-index:3;background:#fafafa">Pair Key</th>
           <th style="min-width:80px;position:sticky;left:192px;z-index:3;background:#fafafa">Period</th>
@@ -1698,7 +1711,6 @@ function renderRaw(){
         </tr>
       </thead>
       <tbody>
-        ${(()=>{window.pageRows_IDS=${JSON.stringify(pageRows.map(r=>({id:r.id})))};return '';})()}
         ${pageRows.map(r=>{
           const isActive=ST.rawActiveRow===r.id;
           const isSelected=ST.rawSelected.has(r.id);
