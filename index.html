@@ -140,6 +140,7 @@ const EDITABLE_COLS=[
   {key:'include_exclude',    label:'Z Include/Exclude',    type:'select',options:['Include','Exclude']},
   {key:'description',        label:'AA Description',       type:'text'},
   {key:'column1',            label:'AB Column1',           type:'text'},
+  {key:'invoice_item',       label:'AC Invoice Item',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation']},
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
-  stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,
+  stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
   rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},
   editingCell:null,
   modal:null,
@@ -295,6 +296,7 @@ async function processFile(file){
         include_exclude:   String(r['Include/Exclude']||'Include').trim(),
         description:       String(r['Description']||'').trim(),
         column1:           String(r['Column1']||'').trim(),
+        invoice_item:      String(r['Invoice Item']||'').trim(),
       })));
       ST.uploadProgress=30+Math.round((i/raw.length)*62);
       ST.uploadMsg=`Saving rows ${i+1}–${Math.min(i+BATCH,raw.length)} of ${raw.length.toLocaleString()}…`;
@@ -600,6 +602,7 @@ function renderDashboard(){
     <button class="tab ${ST.view==='settlement'?'active':''}" onclick="ST.view='settlement';render()">Settlement</button>
     <button class="tab ${ST.view==='statements'?'active':''}" onclick="ST.view='statements';render()">Entity Statements</button>
     <button class="tab ${ST.view==='raw'?'active':''}" onclick="ST.view='raw';render()">Raw Data</button>
+    <button class="tab ${ST.view==='invoice'?'active':''}" onclick="ST.view='invoice';render()">🧾 Invoice</button>
   </div>
   ${ST.view==='hub'?renderHub(hub):''}
   ${ST.view==='summary'?renderSummary(f):''}
@@ -608,7 +611,8 @@ function renderDashboard(){
   ${ST.view==='jv'?renderJV():''}
   ${ST.view==='settlement'?renderSettlement():''}
   ${ST.view==='statements'?renderStatements():''}
-  ${ST.view==='raw'?renderRaw():''}`;
+  ${ST.view==='raw'?renderRaw():''}
+  ${ST.view==='invoice'?renderInvoice():''}`;
 }
 
 function renderHub(hub){
@@ -1509,6 +1513,325 @@ function selectPair(pair){
 }
 
 function renderModal(){return'';}
+
+// ── INVOICE DESCRIPTIONS ──────────────────────────────────────────────────
+const ITEM_DESCRIPTIONS={
+  'Payroll':'Allocation of payroll-related costs from Corporate to the JV for the applicable billing period.',
+  'Management Fee':'Management fee charged in accordance with the Master Services Agreement, calculated as 10% of revenue for the applicable billing period.',
+  'Expense Reimbursement':'Reimbursement of corporate-incurred expenses (including AMEX/credit card charges) allocated to the JV for the applicable billing period.',
+  'Corporate Expense Allocation':'Allocation of corporate-incurred operating expenses (including technology, marketing, and administrative costs) to the JV for the applicable billing period.',
+  'Labor Expense Allocation':'Allocation of corporate-incurred labor expenses to the JV for the applicable billing period.',
+  'Vendor Bill Allocation':'', // dynamically built from memos
+};
+
+const ITEM_ORDER=['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation'];
+
+function buildInvoiceData(jvEntity, period){
+  // Get rows for this JV entity, this period, tagged with invoice_item
+  const rows = ST.rows.filter(r=>{
+    const isThisJV = r.sub_name===jvEntity || r.pair_key===`${jvEntity} | START` || r.pair_key===`START | ${jvEntity}`;
+    const isThisPeriod = !period || r.period===period;
+    return isThisJV && isThisPeriod && r.invoice_item && isAR(r);
+  });
+
+  // Roll up by invoice_item
+  const map={};
+  rows.forEach(r=>{
+    const item=r.invoice_item;
+    if(!map[item])map[item]={item,amount:0,memos:[]};
+    map[item].amount+=(parseFloat(r.amount)||0);
+    if(r.memo&&!map[item].memos.includes(r.memo))map[item].memos.push(r.memo);
+  });
+
+  // Sort by ITEM_ORDER
+  return ITEM_ORDER.filter(i=>map[i]).map(i=>({
+    item:i,
+    amount:map[i].amount,
+    description: i==='Vendor Bill Allocation'
+      ? map[i].memos.map(m=>`Vendor Bill allocation ${m}`).join('\n')
+      : ITEM_DESCRIPTIONS[i],
+  }));
+}
+
+function buildInvoiceNumber(jvEntity, period){
+  if(!period)return'';
+  const[mon,yr]=period.split(' ');
+  const MNUM={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+  const short=(jvEntity||'').replace(/\s/g,'').toUpperCase().slice(0,4);
+  return`${MNUM[mon]||'00'}${yr}Interco${short}`;
+}
+
+async function downloadInvoice(){
+  const jv=ST.invJV, period=ST.invPeriod;
+  if(!jv||!period){alert('Please select a JV entity and period first.');return;}
+  const items=buildInvoiceData(jv,period);
+  if(!items.length){alert('No rows found with Invoice Item tags for this entity/period. Tag rows in Raw Data first.');return;}
+
+  // Dynamic import XLSX
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([]);
+  XLSX.utils.book_append_sheet(wb,ws,'Invoice');
+
+  // We'll build as HTML and use a print window for pixel-perfect output
+  const total=items.reduce((s,i)=>s+i.amount,0);
+  const invNum=buildInvoiceNumber(jv,period);
+  const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+
+  const printHTML=`<!DOCTYPE html><html><head><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:40px;max-width:800px;margin:0 auto}
+    .header-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+    .from-block{font-size:12px;line-height:1.7}
+    .from-name{font-size:15px;font-weight:600;margin-bottom:4px}
+    .invoice-title{font-size:28px;font-weight:700;color:#111;text-align:right}
+    .meta-table{margin-top:8px;text-align:right;font-size:11px}
+    .meta-table td{padding:2px 6px}
+    .meta-label{font-weight:600;background:#f0f0f0}
+    .bill-section{display:flex;justify-content:space-between;margin-bottom:20px;padding:14px 0;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
+    .bill-block{font-size:11px;line-height:1.7}
+    .bill-label{font-weight:700;font-size:12px;margin-bottom:4px}
+    .period-line{font-size:12px;font-weight:500;margin-bottom:16px}
+    .items-table{width:100%;border-collapse:collapse;margin-bottom:0}
+    .items-table th{background:#222;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+    .items-table th.right{text-align:right}
+    .items-table td{padding:8px 10px;border-bottom:0.5px solid #e5e5e5;vertical-align:top;font-size:11px}
+    .items-table td.right{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .items-table .item-name{font-weight:600;min-width:140px}
+    .items-table .desc{color:#444;line-height:1.5;white-space:pre-line}
+    .total-row{display:flex;justify-content:flex-end;margin-top:0;border-top:2px solid #111}
+    .total-label{font-weight:700;font-size:13px;padding:10px 10px 10px 0;min-width:120px;text-align:right}
+    .total-amt{font-weight:700;font-size:14px;padding:10px 10px;text-align:right;min-width:120px;font-variant-numeric:tabular-nums}
+    .payment-section{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;line-height:1.8}
+    .payment-label{font-weight:700;font-size:12px;margin-bottom:4px}
+    @media print{body{padding:20px}}
+  </style></head><body>
+
+  <div class="header-row">
+    <div class="from-block">
+      <div class="from-name">SOUTH Texas Accelerated Research Therapeutics, LP</div>
+      4383 Medical Drive, Suite 4021<br>San Antonio TX, 78229, US<br>Tax ID #: 39-2392479
+    </div>
+    <div>
+      <div class="invoice-title">INVOICE</div>
+      <table class="meta-table"><tbody>
+        <tr><td class="meta-label">DATE</td><td class="meta-label">INVOICE #</td></tr>
+        <tr><td>${today}</td><td>${invNum}</td></tr>
+        <tr><td colspan="2" style="text-align:right;font-weight:600;color:#555">Due: Net 30 Days</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="bill-section">
+    <div class="bill-block">
+      <div class="bill-label">BILL TO</div>
+      ${esc(jv)}<br>
+      4383 Medical Drive, Suite 4021<br>
+      San Antonio TX, 78229, US<br>
+      ap@startresearch.com
+    </div>
+  </div>
+
+  <div class="period-line">Billing Period: ${period}</div>
+
+  <table class="items-table">
+    <thead><tr>
+      <th style="width:160px">Item</th>
+      <th>Description</th>
+      <th class="right" style="width:120px">COST</th>
+    </tr></thead>
+    <tbody>
+      ${items.map(i=>`<tr>
+        <td class="item-name">${esc(i.item)}</td>
+        <td class="desc">${esc(i.description)}</td>
+        <td class="right">$${i.amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+
+  <div class="total-row">
+    <div class="total-label">TOTAL DUE</div>
+    <div class="total-amt">$${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+  </div>
+
+  <div class="payment-section">
+    <div class="payment-label">Please remit payment via ACH to:</div>
+    START, LP - Operating Account<br>
+    Bank Name: JPMorgan Chase Bank, N.A. - Texas<br>
+    Bank Account Number: 663066366<br>
+    ACH Routing Number: 111000614<br><br>
+    If you have any questions about this invoice, please contact Yahira Melgard<br>
+    yahira.melgard@startresearch.com
+  </div>
+
+  <script>window.onload=()=>window.print();<\/script>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  w.document.write(printHTML);
+  w.document.close();
+}
+
+function renderInvoice(){
+  // JV entities = all sub_names that are not START/ELIM
+  const jvEntities=[...new Set(ST.rows.map(r=>r.sub_name).filter(s=>s&&s!=='START'&&!s.includes('ELIM')))].sort();
+  const periods=ST.periods;
+
+  const items=ST.invJV&&ST.invPeriod?buildInvoiceData(ST.invJV,ST.invPeriod):[];
+  const total=items.reduce((s,i)=>s+i.amount,0);
+  const invNum=buildInvoiceNumber(ST.invJV||'',ST.invPeriod||'');
+  const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+
+  // Check how many rows have invoice_item tagged for selected JV/period
+  const taggedCount=ST.invJV&&ST.invPeriod?ST.rows.filter(r=>{
+    const isThisJV=r.sub_name===ST.invJV||r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
+    return isThisJV&&r.period===ST.invPeriod&&r.invoice_item&&isAR(r);
+  }).length:0;
+  const totalRows=ST.invJV&&ST.invPeriod?ST.rows.filter(r=>{
+    const isThisJV=r.sub_name===ST.invJV||r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
+    return isThisJV&&r.period===ST.invPeriod&&isAR(r);
+  }).length:0;
+
+  return`
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:1.5rem;align-items:start">
+
+    <!-- Left: controls -->
+    <div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Invoice settings</span></div>
+        <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="form-label">JV Entity (Bill To)</div>
+            <select style="width:100%" onchange="ST.invJV=this.value;render()">
+              <option value="">Select JV entity…</option>
+              ${jvEntities.map(e=>`<option value="${esc(e)}" ${ST.invJV===e?'selected':''}>${esc(e)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <div class="form-label">Billing Period</div>
+            <select style="width:100%" onchange="ST.invPeriod=this.value;render()">
+              <option value="">Select period…</option>
+              ${periods.map(p=>`<option value="${p}" ${ST.invPeriod===p?'selected':''}>${p}</option>`).join('')}
+            </select>
+          </div>
+          ${ST.invJV&&ST.invPeriod?`
+          <div style="background:#f5f5f3;border-radius:8px;padding:10px 12px;font-size:12px">
+            <div style="font-weight:500;margin-bottom:4px">Invoice #</div>
+            <div style="font-family:monospace;color:#2563eb">${invNum}</div>
+          </div>
+          <div style="background:${taggedCount===0?'#fef2f2':taggedCount<totalRows?'#fef3c7':'#f0fdf4'};border-radius:8px;padding:10px 12px;font-size:12px">
+            <div style="font-weight:500;margin-bottom:2px;color:${taggedCount===0?'#dc2626':taggedCount<totalRows?'#d97706':'#16a34a'}">
+              ${taggedCount===0?'⚠ No rows tagged yet':taggedCount<totalRows?`⚠ ${taggedCount} of ${totalRows} AR rows tagged`:`✓ ${taggedCount} rows tagged`}
+            </div>
+            <div style="color:#666">Tag rows in Raw Data tab using the AC Invoice Item column</div>
+          </div>
+          <button class="btn-dark" style="width:100%;padding:10px;font-size:13px;justify-content:center;display:flex;align-items:center;gap:6px" onclick="downloadInvoice()">
+            🖨 Print / Download PDF
+          </button>`:''}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="card-title">Item descriptions</span></div>
+        <div style="padding:10px 14px">
+          ${ITEM_ORDER.map(item=>`
+          <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:0.5px solid #f0f0f0">
+            <div style="font-size:11px;font-weight:600;margin-bottom:2px">${esc(item)}</div>
+            <div style="font-size:10px;color:#666;line-height:1.5">${esc(item==='Vendor Bill Allocation'?'Built dynamically from memo field':ITEM_DESCRIPTIONS[item])}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: live invoice preview -->
+    <div>
+      ${(!ST.invJV||!ST.invPeriod)?`<div class="card"><div class="empty" style="padding:4rem">Select a JV entity and period on the left to preview the invoice</div></div>`:`
+      <div class="card" style="border:0.5px solid #111">
+        <div class="card-head">
+          <span class="card-title">Invoice preview — ${esc(ST.invJV)} · ${esc(ST.invPeriod)}</span>
+        </div>
+        <!-- Invoice body -->
+        <div style="padding:28px 32px;background:#fff">
+
+          <!-- Header -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+            <div style="font-size:12px;line-height:1.7">
+              <div style="font-size:14px;font-weight:600;margin-bottom:3px">SOUTH Texas Accelerated Research Therapeutics, LP</div>
+              4383 Medical Drive, Suite 4021<br>San Antonio TX, 78229, US<br>Tax ID #: 39-2392479
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:26px;font-weight:700;letter-spacing:-1px">INVOICE</div>
+              <table style="margin-left:auto;border-collapse:collapse;font-size:11px;margin-top:6px">
+                <tr>
+                  <td style="background:#f0f0f0;font-weight:600;padding:3px 8px;border:0.5px solid #ccc">DATE</td>
+                  <td style="background:#f0f0f0;font-weight:600;padding:3px 8px;border:0.5px solid #ccc">INVOICE #</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 8px;border:0.5px solid #ccc">${today}</td>
+                  <td style="padding:3px 8px;border:0.5px solid #ccc">${invNum}</td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding:3px 8px;border:0.5px solid #ccc;font-weight:600;color:#555">Due: Net 30 Days</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <!-- Bill to -->
+          <div style="display:flex;justify-content:space-between;padding:12px 0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin-bottom:16px;font-size:11px">
+            <div>
+              <div style="font-weight:700;margin-bottom:4px;font-size:12px">BILL TO</div>
+              <div style="font-weight:500">${esc(ST.invJV)}</div>
+              4383 Medical Drive, Suite 4021<br>San Antonio TX, 78229, US<br>ap@startresearch.com
+            </div>
+          </div>
+
+          <div style="font-size:12px;font-weight:500;margin-bottom:14px">Billing Period: ${esc(ST.invPeriod)}</div>
+
+          <!-- Items table -->
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:0">
+            <thead>
+              <tr style="background:#222;color:#fff">
+                <th style="padding:7px 10px;text-align:left;width:150px">Item</th>
+                <th style="padding:7px 10px;text-align:left">Description</th>
+                <th style="padding:7px 10px;text-align:right;width:120px">COST</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.length?items.map(i=>`<tr style="border-bottom:0.5px solid #e5e5e5">
+                <td style="padding:8px 10px;font-weight:600;vertical-align:top">${esc(i.item)}</td>
+                <td style="padding:8px 10px;color:#444;line-height:1.5;white-space:pre-line;vertical-align:top">${esc(i.description)}</td>
+                <td style="padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums;vertical-align:top">$${i.amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+              </tr>`).join('')
+              :`<tr><td colspan="3" style="padding:20px 10px;text-align:center;color:#999;font-style:italic">No tagged rows found — go to Raw Data and set Invoice Item for AR rows</td></tr>`}
+            </tbody>
+          </table>
+
+          <!-- Total -->
+          <div style="display:flex;justify-content:flex-end;border-top:2px solid #111;padding-top:2px">
+            <div style="display:flex;gap:0">
+              <div style="font-weight:700;font-size:13px;padding:10px 16px;border-right:0.5px solid #ccc">TOTAL DUE</div>
+              <div style="font-weight:700;font-size:14px;padding:10px 16px;font-variant-numeric:tabular-nums;color:${items.length?'#111':'#999'}">
+                $${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment -->
+          <div style="margin-top:20px;padding-top:14px;border-top:1px solid #ccc;font-size:11px;line-height:1.9">
+            <div style="font-weight:700;font-size:12px;margin-bottom:4px">Please remit payment via ACH to:</div>
+            START, LP - Operating Account<br>
+            Bank Name: JPMorgan Chase Bank, N.A. - Texas<br>
+            Bank Account Number: 663066366<br>
+            ACH Routing Number: 111000614<br><br>
+            If you have any questions about this invoice, please contact Yahira Melgard<br>
+            yahira.melgard@startresearch.com
+          </div>
+        </div>
+      </div>`}
+    </div>
+  </div>`;
+}
+
 
 init();
 </script>
