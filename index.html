@@ -350,9 +350,21 @@ async function commitEdit(id,field){
   const fdef=EDITABLE_COLS.find(f=>f.key===field);
   const newVal=fdef?.type==='number'?parseFloat(val)||0:val;
   if(String(row[field]||'')==String(newVal)){ST.editingCell=null;render();return;}
+  // update local row immediately
   row[field]=newVal;row.edited_by='team';row.edited_at=new Date().toISOString();
   await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:'team',edited_at:row.edited_at});
-  ST.editingCell=null;aggregate(ST.rows);render();
+  ST.editingCell=null;
+  aggregate(ST.rows);
+  render();
+}
+
+async function refreshRows(){
+  if(!ST.current)return;
+  const refreshBtn=document.getElementById('inv-refresh');
+  if(refreshBtn)refreshBtn.textContent='Refreshing…';
+  ST.rows=await api.getAll('transactions',`upload_id=eq.${ST.current.id}`);
+  aggregate(ST.rows);
+  render();
 }
 
 function cancelEdit(){ST.editingCell=null;render();}
@@ -366,7 +378,6 @@ function editableCell(row,field,val){
     if(fdef?.type==='select'){
       return`<select class="inline-edit" id="ie-${id}-${field}"
         onchange="commitEdit('${id}','${field}')"
-        onblur="commitEdit('${id}','${field}')"
         onkeydown="if(event.key==='Escape')cancelEdit()">
         ${(fdef.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}
       </select>`;
@@ -375,9 +386,14 @@ function editableCell(row,field,val){
       onblur="commitEdit('${id}','${field}')"
       onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelEdit()">`;
   }
-  const display=field==='include_exclude'
-    ?`<span class="${val==='Exclude'?'excl':'incl'}">${esc(val||'Include')}</span>`
-    :`<span class="editable-cell ${isEdited?'edited':''}" title="Click to edit">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
+  let display;
+  if(field==='include_exclude'){
+    display=`<span class="${val==='Exclude'?'excl':'incl'}">${esc(val||'Include')}</span>`;
+  } else if(field==='invoice_item'&&val){
+    display=`<span style="font-size:10px;padding:2px 7px;border-radius:100px;background:#dbeafe;color:#1d4ed8;font-weight:500;white-space:nowrap">${esc(val)}</span>`;
+  } else {
+    display=`<span class="editable-cell ${isEdited?'edited':''}" title="Click to edit">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
+  }
   return`<span onclick="startEdit('${id}','${field}',event)">${display}</span>`;
 }
 
@@ -1692,6 +1708,15 @@ function renderInvoice(){
   }).length:0;
 
   return`
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <div>
+      <div style="font-size:14px;font-weight:500">Invoice Generator</div>
+      <div style="font-size:12px;color:#666;margin-top:2px">Tag rows in Raw Data (AC Invoice Item column) then refresh to see them here</div>
+    </div>
+    <button class="btn-dark" id="inv-refresh" onclick="refreshRows()" style="display:flex;align-items:center;gap:6px">
+      ↻ Refresh from Supabase
+    </button>
+  </div>
   <div style="display:grid;grid-template-columns:300px 1fr;gap:1.5rem;align-items:start">
 
     <!-- Left: controls -->
