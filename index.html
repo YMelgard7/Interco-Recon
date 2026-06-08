@@ -71,6 +71,9 @@ textarea{font-size:12px;padding:7px 9px;border-radius:7px;border:0.5px solid #d4
 .dd-item:hover{background:#f5f5f3}
 .incl{color:#16a34a;font-size:11px;font-weight:500}
 .excl{color:#dc2626;font-size:11px;font-weight:500}
+.raw-cell{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.45;word-break:break-word;cursor:default;max-width:180px;vertical-align:top;transition:background .12s}
+.raw-cell:hover{-webkit-line-clamp:unset;background:#fffbeb;position:relative;z-index:4;border-radius:3px;box-shadow:0 2px 10px rgba(0,0,0,.1);padding:3px 5px;white-space:pre-wrap}
+.scroll-y td{vertical-align:top}
 </style>
 </head>
 <body>
@@ -403,7 +406,7 @@ function editableCell(row,field,val){
   } else if(field==='invoice_item'&&val){
     display=`<span style="font-size:10px;padding:2px 7px;border-radius:100px;background:#dbeafe;color:#1d4ed8;font-weight:500;white-space:nowrap">${esc(val)}</span>`;
   } else {
-    display=`<span class="editable-cell ${isEdited?'edited':''}" title="Click to edit">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
+    display=`<span class="editable-cell ${isEdited?'edited':''}" title="${esc(val)}" style="white-space:normal;word-break:break-word;display:block;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;display:-webkit-box;max-width:180px">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
   }
   return`<span onclick="startEdit('${id}','${field}',event)">${display}</span>`;
 }
@@ -1677,7 +1680,14 @@ function renderRaw(){
         <button class="btn" onclick="ST.rawPage=Math.min(${pages-1},ST.rawPage+1);render()" ${page>=pages-1?'disabled':''}>Next →</button>
       </div>
     </div>
-    <div class="scroll-x scroll-y"><table>
+    <div class="scroll-x scroll-y"><table style="table-layout:fixed;min-width:2400px">
+      <colgroup>
+        <col style="width:36px">
+        <col style="width:160px">
+        <col style="width:90px">
+        ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<col style="width:${['memo','memo2','subsidiary','account'].includes(c.key)?'200px':'120px'}">`).join('')}
+        ${EDITABLE_COLS.map(c=>`<col style="width:${['relationship','who_owes_who','description','invoice_item'].includes(c.key)?'160px':'110px'}">`).join('')}
+      </colgroup>
       <thead>
         <!-- Column headers -->
         <tr>
@@ -1721,8 +1731,12 @@ function renderRaw(){
             </td>
             <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
             <td style="position:sticky;left:192px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-size:11px">${esc(r.period)}</td>
-            ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<td class="muted" style="font-size:11px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
-            ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
+            ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>{
+            const val=esc(r[c.key]);
+            const full=String(r[c.key]||'');
+            return`<td class="muted raw-cell" title="${val}" style="font-size:11px;max-width:180px">${val}</td>`;
+          }).join('')}
+            ${EDITABLE_COLS.map(c=>`<td style="min-width:80px;max-width:200px;vertical-align:top;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
           </tr>`;
         }).join('')}
         ${pageRows.length===0?`<tr><td colspan="${READONLY_COLS.length+EDITABLE_COLS.length+3}" class="empty">No rows match filters</td></tr>`:''}
