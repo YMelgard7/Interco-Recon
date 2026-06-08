@@ -1543,31 +1543,85 @@ const ITEM_DESCRIPTIONS={
 const ITEM_ORDER=['Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation'];
 
 function buildInvoiceData(jvEntity, period){
-  // Get rows for this JV entity, this period, tagged with invoice_item
-  const rows = ST.rows.filter(r=>{
-    const isThisJV = r.sub_name===jvEntity || r.pair_key===`${jvEntity} | START` || r.pair_key===`START | ${jvEntity}`;
+  // Step 1: find ALL rows for this pair (both AR and AP sides, both sub_names)
+  // that have been tagged with an invoice_item
+  const pairKey1 = `${jvEntity} | START`;
+  const pairKey2 = `START | ${jvEntity}`;
+
+  const taggedRows = ST.rows.filter(r=>{
+    const inPair = r.pair_key===pairKey1 || r.pair_key===pairKey2 ||
+                   r.sub_name===jvEntity || r.sub_name==='START';
+    const inPairKey = r.pair_key===pairKey1 || r.pair_key===pairKey2;
     const isThisPeriod = !period || r.period===period;
-    return isThisJV && isThisPeriod && r.invoice_item && isAR(r);
+    return inPairKey && isThisPeriod && r.invoice_item;
   });
 
-  // Roll up by invoice_item
-  const map={};
-  rows.forEach(r=>{
-    const item=r.invoice_item;
-    if(!map[item])map[item]={item,amount:0,memos:[]};
-    map[item].amount+=(parseFloat(r.amount)||0);
-    if(r.memo&&!map[item].memos.includes(r.memo))map[item].memos.push(r.memo);
+  // Step 2: get the unique invoice items from tagged rows (either side)
+  const taggedItems = [...new Set(taggedRows.map(r=>r.invoice_item).filter(Boolean))];
+
+  // Step 3: for each tagged item, find the AR side rows to get the correct amount
+  // AR rows = START's receivable = what START is billing to the JV
+  const map = {};
+  taggedItems.forEach(item => {
+    // Find AR rows for this item in this pair/period
+    const arRows = ST.rows.filter(r=>{
+      const inPairKey = r.pair_key===pairKey1 || r.pair_key===pairKey2;
+      const isThisPeriod = !period || r.period===period;
+      const itemMatch = r.invoice_item === item ||
+        // also match by description if item not tagged on AR side
+        descMatchesItem(r.description, item);
+      return inPairKey && isThisPeriod && isAR(r) && itemMatch;
+    });
+
+    // If no AR rows tagged directly, fall back to AP tagged rows amounts
+    const apTaggedRows = taggedRows.filter(r=>r.invoice_item===item && !isAR(r));
+    const arTaggedRows = taggedRows.filter(r=>r.invoice_item===item && isAR(r));
+
+    let amount = 0;
+    let memos = [];
+
+    if(arTaggedRows.length > 0){
+      // Use directly tagged AR rows
+      amount = arTaggedRows.reduce((s,r)=>s+(parseFloat(r.amount)||0), 0);
+      memos = arTaggedRows.map(r=>r.memo).filter(Boolean);
+    } else if(arRows.length > 0){
+      // Use AR rows matched by description
+      amount = arRows.reduce((s,r)=>s+(parseFloat(r.amount)||0), 0);
+      memos = arRows.map(r=>r.memo).filter(Boolean);
+    } else {
+      // Fall back to AP tagged rows (mirror = same amount)
+      amount = apTaggedRows.reduce((s,r)=>s+(parseFloat(r.amount)||0), 0);
+      memos = apTaggedRows.map(r=>r.memo).filter(Boolean);
+    }
+
+    if(!map[item]) map[item] = {item, amount:0, memos:[]};
+    map[item].amount += amount;
+    memos.forEach(m=>{ if(m && !map[item].memos.includes(m)) map[item].memos.push(m); });
   });
 
-  // Sort by ITEM_ORDER
+  // Step 4: sort by ITEM_ORDER and build descriptions
   return ITEM_ORDER.filter(i=>map[i]).map(i=>({
-    item:i,
-    amount:map[i].amount,
+    item: i,
+    amount: map[i].amount,
     description: i==='Vendor Bill Allocation'
       ? map[i].memos.map(m=>`Vendor Bill allocation ${m}`).join('\n')
       : ITEM_DESCRIPTIONS[i],
   }));
 }
+
+function descMatchesItem(desc, item){
+  if(!desc || !item) return false;
+  const d = desc.toLowerCase();
+  const it = item.toLowerCase();
+  if(it==='payroll' && (d.includes('payroll'))) return true;
+  if(it==='management fee' && d.includes('management fee')) return true;
+  if(it==='expense reimbursement' && (d.includes('credit card') || d.includes('expense pushdown'))) return true;
+  if(it==='corporate expense allocation' && d.includes('expense pushdown')) return true;
+  if(it==='labor expense allocation' && d.includes('labor pushdown')) return true;
+  if(it==='vendor bill allocation' && d.includes('vendor bill')) return true;
+  return false;
+}
+
 
 function buildInvoiceNumber(jvEntity, period){
   if(!period)return'';
@@ -1699,12 +1753,12 @@ function renderInvoice(){
 
   // Check how many rows have invoice_item tagged for selected JV/period
   const taggedCount=ST.invJV&&ST.invPeriod?ST.rows.filter(r=>{
-    const isThisJV=r.sub_name===ST.invJV||r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
-    return isThisJV&&r.period===ST.invPeriod&&r.invoice_item&&isAR(r);
+    const inPair=r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
+    return inPair&&r.period===ST.invPeriod&&r.invoice_item;
   }).length:0;
   const totalRows=ST.invJV&&ST.invPeriod?ST.rows.filter(r=>{
-    const isThisJV=r.sub_name===ST.invJV||r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
-    return isThisJV&&r.period===ST.invPeriod&&isAR(r);
+    const inPair=r.pair_key===`${ST.invJV} | START`||r.pair_key===`START | ${ST.invJV}`;
+    return inPair&&r.period===ST.invPeriod;
   }).length:0;
 
   return`
