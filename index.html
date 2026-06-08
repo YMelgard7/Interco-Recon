@@ -24,7 +24,7 @@ button,select,input,textarea{font-family:inherit}
 .metric-label{font-size:11px;color:#666;margin-bottom:3px}
 .metric-val{font-size:18px;font-weight:500}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:7px 8px;font-size:11px;font-weight:500;color:#666;border-bottom:0.5px solid #e5e5e5;white-space:nowrap;background:#fafafa;position:sticky;top:0;z-index:1}
+th{text-align:left;padding:7px 8px;font-size:11px;font-weight:500;color:#666;border-bottom:0.5px solid #e5e5e5;white-space:nowrap;background:#fafafa;position:sticky;top:0;z-index:2}
 td{padding:6px 8px;border-bottom:0.5px solid #f0f0f0;vertical-align:middle}
 tr.clickable{cursor:pointer}
 tr.clickable:hover td{background:#fafafa}
@@ -146,8 +146,8 @@ const EDITABLE_COLS=[
   {key:'who_is_owed',        label:'Y Who Is Owed',        type:'text'},
   {key:'include_exclude',    label:'Z Include/Exclude',    type:'select',options:['Include','Exclude']},
   {key:'description',        label:'AA Description',       type:'text'},
-  {key:'column1',            label:'AB Column1',           type:'text'},
-  {key:'invoice_item',       label:'AC Invoice Item',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments']},
+  {key:'column1',            label:'AB Entity Stmt Tagging',           type:'text'},
+  {key:'invoice_item',       label:'AC Invoice Tagging',      type:'select', options:['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments']},
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ const ST={
   screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
-  stmtEntity:null,settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
+  stmtEntity:null,stmtPeriods:[],settlementView:'all',settlementEntity:null,jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
   rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:{},rawActiveRow:null,rawShowUntagged:false,rawFullscreen:false,
   editingCell:null,
   modal:null,
@@ -1283,7 +1283,8 @@ function renderSettlement(){
 
 function renderStatements(){
   const entities=[...new Set(ST.rows.map(r=>r.sub_name).filter(Boolean))].sort();
-  const stmtRows=ST.stmtEntity?ST.rows.filter(r=>r.sub_name===ST.stmtEntity):[];
+  const activePeriods=ST.stmtPeriods.length>0?ST.stmtPeriods:ST.periods;
+  const stmtRows=ST.stmtEntity?ST.rows.filter(r=>r.sub_name===ST.stmtEntity&&activePeriods.includes(r.period)):[];
 
   // Totals for header
   const arT=stmtRows.filter(r=>isAR(r)).reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
@@ -1331,11 +1332,33 @@ function renderStatements(){
     });
   }
 
-  return`<div class="filters">
+  return`<div class="filters" style="flex-wrap:wrap;align-items:flex-start">
     <select onchange="ST.stmtEntity=this.value;render()" style="width:200px">
       <option value="">Select entity…</option>
       ${entities.map(e=>`<option value="${esc(e)}" ${ST.stmtEntity===e?'selected':''}>${esc(e)}</option>`).join('')}
     </select>
+
+    <!-- Multi-month checkboxes -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <span style="font-size:12px;color:#666;font-weight:500">Periods:</span>
+      ${ST.periods.map(p=>{
+        const checked=ST.stmtPeriods.length===0||ST.stmtPeriods.includes(p);
+        return`<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;background:${checked?'#f0fdf4':'#f5f5f3'};padding:3px 8px;border-radius:6px;border:0.5px solid ${checked?'#86efac':'#d4d4d4'}">
+          <input type="checkbox" ${checked?'checked':''} 
+            onchange="(function(){
+              const all=[${ST.periods.map(x=>`'${x}'`).join(',')}];
+              const cur=new Set(ST.stmtPeriods.length?ST.stmtPeriods:all);
+              if(this.checked)cur.add('${p}');else cur.delete('${p}');
+              ST.stmtPeriods=cur.size===all.length?[...cur]:cur.size===0?[...all]:[...cur];
+              render();
+            }).call(this)">
+          ${p}
+        </label>`;
+      }).join('')}
+      ${ST.stmtPeriods.length>0&&ST.stmtPeriods.length<ST.periods.length?
+        `<button class="btn" style="font-size:11px" onclick="ST.stmtPeriods=[];render()">Show all</button>`:''}
+    </div>
+
     ${ST.stmtEntity?`
       <button class="btn-blue" onclick="exportPDF('stmt')">⬇ PDF</button>
       <button class="btn-green" onclick="exportExcel('stmt')">⬇ Excel</button>`:''}
@@ -1346,12 +1369,15 @@ function renderStatements(){
   ${ST.stmtEntity?`
   <div class="card">
     <div class="stmt-entity-head">
-      <span>${esc(ST.stmtEntity)} — Intercompany Statement</span>
+      <div>
+        <span>${esc(ST.stmtEntity)} — Intercompany Statement</span>
+        <span class="muted" style="font-size:11px;margin-left:10px">${activePeriods.join(', ')}</span>
+      </div>
       <div style="display:flex;gap:20px;font-size:12px;flex-wrap:wrap">
         <span>AR Total: <strong class="ok">${fmt(arT)}</strong></span>
         <span>AP Total: <strong class="info">${fmt(apT)}</strong></span>
         <span>Net: <strong class="${arT-apT>=0?'ok':'warn'}">${fmtD(arT-apT)}</strong></span>
-        <span class="muted">${stmtRows.length} transactions across ${Object.keys(byPair).length} pairs</span>
+        <span class="muted">${stmtRows.length} transactions · ${Object.keys(byPair).length} pairs</span>
       </div>
     </div>
 
@@ -1732,7 +1758,7 @@ function renderRaw(){
           ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
         </tr>
         <!-- Column filter row -->
-        <tr>
+        <tr style="position:sticky;top:28px;z-index:2">
           <th style="background:#f5f5f3;position:sticky;left:0;z-index:3"></th>
           <th style="position:sticky;left:32px;z-index:3;background:#f5f5f3;padding:3px 4px">
             <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
