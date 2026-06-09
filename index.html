@@ -1503,6 +1503,11 @@ async function autoTagByDescription(){
 }
 
 async function applyBulkField(field, value){
+  // if free-text field, read from text input instead
+  if(field==='who_owes_who'){
+    const inp=document.getElementById('bulk-val-text');
+    if(inp) value=inp.value;
+  }
   const selected = Object.keys(ST.rawSelected);
   if(!selected.length){ alert('No rows selected. Check boxes on the left to select rows.'); return; }
   if(!confirm(`Apply "${value}" to ${selected.length} selected rows?`)) return;
@@ -1517,6 +1522,15 @@ async function applyBulkField(field, value){
   render();
 }
 
+function applyVisibleRows(){
+  const field = document.getElementById('bulk-field-sel')?.value || 'invoice_item';
+  const textInp = document.getElementById('bulk-val-text');
+  const value = (textInp && textInp.style.display !== 'none')
+    ? textInp.value
+    : (document.getElementById('bulk-val-sel')?.value || '');
+  applyBulkToVisible(field, value);
+}
+
 async function applyBulkToVisible(field, value){
   const rows = getRawFiltered();
   if(!rows.length){ alert('No rows in current filter.'); return; }
@@ -1527,6 +1541,38 @@ async function applyBulkToVisible(field, value){
   }
   aggregate(ST.rows);
   render();
+}
+
+function updateBulkValOptions(){
+  const field = document.getElementById('bulk-field-sel')?.value;
+  const valSel = document.getElementById('bulk-val-sel');
+  if(!valSel) return;
+  const FIELD_OPTIONS = {
+    'invoice_item': ['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments'],
+    'column1':      ['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments','IC Settlement'],
+    'include_exclude': ['Include','Exclude'],
+    'who_owes_who': [''],
+  };
+  const opts = FIELD_OPTIONS[field] || [''];
+  valSel.innerHTML = opts.map(v=>`<option value="${v}">${v||'(clear)'}</option>`).join('');
+  // if free-text field, replace select with input
+  if(field==='who_owes_who'){
+    valSel.style.display='none';
+    let inp = document.getElementById('bulk-val-text');
+    if(!inp){
+      inp = document.createElement('input');
+      inp.id='bulk-val-text';
+      inp.type='text';
+      inp.placeholder='Enter value…';
+      inp.style='font-size:11px;padding:4px 7px;border-radius:7px;border:0.5px solid #d4d4d4;width:140px';
+      valSel.parentNode.insertBefore(inp, valSel.nextSibling);
+    }
+    inp.style.display='';
+  } else {
+    valSel.style.display='';
+    const inp = document.getElementById('bulk-val-text');
+    if(inp) inp.style.display='none';
+  }
 }
 
 function toggleRowSelect(id){
@@ -1693,10 +1739,11 @@ function renderRaw(){
     <!-- Selected rows action -->
     <div style="display:flex;align-items:center;gap:6px;border-left:0.5px solid #e5e5e5;padding-left:10px">
       <span id="sel-count-badge" style="font-size:11px;color:#666">${selCount>0?`${selCount} row${selCount>1?'s':''} selected`:'Select rows →'}</span>
-      <select id="bulk-field-sel" style="font-size:11px;padding:4px 7px">
-        <option value="invoice_item">Invoice Item</option>
-        <option value="include_exclude">Include/Exclude</option>
-        <option value="who_owes_who">Who Owes Who</option>
+      <select id="bulk-field-sel" style="font-size:11px;padding:4px 7px" onchange="updateBulkValOptions()">
+        <option value="invoice_item">AC Invoice Tagging</option>
+        <option value="column1">AB Entity Stmt Tagging</option>
+        <option value="include_exclude">Z Include/Exclude</option>
+        <option value="who_owes_who">W Who Owes Who</option>
       </select>
       <select id="bulk-val-sel" style="font-size:11px;padding:4px 7px">
         ${invItems.map(v=>`<option value="${esc(v)}">${esc(v)||'(clear)'}</option>`).join('')}
@@ -1708,10 +1755,8 @@ function renderRaw(){
 
     <!-- Apply to all visible -->
     <div style="display:flex;align-items:center;gap:6px;border-left:0.5px solid #e5e5e5;padding-left:10px">
-      <select id="vis-val-sel" style="font-size:11px;padding:4px 7px">
-        ${invItems.map(v=>`<option value="${esc(v)}">${esc(v)||'(clear)'}</option>`).join('')}
-      </select>
-      <button class="btn" style="font-size:11px" onclick="applyBulkToVisible('invoice_item',document.getElementById('vis-val-sel').value)">
+
+      <button class="btn" style="font-size:11px" onclick="applyVisibleRows()">
         Apply to all ${total.toLocaleString()} visible rows
       </button>
     </div>
