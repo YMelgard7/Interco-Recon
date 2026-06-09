@@ -1812,6 +1812,7 @@ function renderRaw(){
         <!-- Column filter row -->
         <tr style="position:sticky;top:28px;z-index:2">
           <th style="background:#f5f5f3;position:sticky;left:0;z-index:3"></th>
+          <th style="background:#f5f5f3;position:sticky;left:32px;z-index:3"></th>
           <th style="position:sticky;left:92px;z-index:3;background:#f5f5f3;padding:3px 4px">
             <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
               onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
@@ -1841,8 +1842,8 @@ function renderRaw(){
                 onclick="event.stopPropagation();toggleRowSelect('${r.id}')">
             </td>
             <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:3px">
-              <button class="btn" style="font-size:10px;padding:2px 6px;white-space:nowrap" onclick="event.stopPropagation();openSplit('${r.id}')" title="Split this transaction">
-                ${r.split_from?'↳ Split':'⚡ Split'}
+              <button class="btn" data-rowid="${r.id}" style="font-size:10px;padding:2px 6px;white-space:nowrap" onclick="event.stopPropagation();openSplit(this.dataset.rowid)" title="Split this transaction">
+                ${r.split_from?'&#8627; Split':'&#9889; Split'}
               </button>
             </td>
             <td style="position:sticky;left:92px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
@@ -1856,7 +1857,7 @@ function renderRaw(){
     </table></div>
   </div>
   ${ST.rawFullscreen?'</div></div>':''}
-  ${ST.splitRow?`<div id="split-panel" class="card" style="margin-top:1rem;border:1.5px solid #2563eb">${buildSplitHTML()}</div>`:'<div id="split-panel"></div>'}
+  <div id="split-panel" class="${ST.splitRow?'card':''}" style="${ST.splitRow?'margin-top:1rem;border:1.5px solid #2563eb':''}"></div>
   ${!ST.rawFullscreen?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
     <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period frozen</p>
     <div style="display:flex;gap:6px">
@@ -1866,6 +1867,8 @@ function renderRaw(){
     </div>
   </div>`:''}
   `;
+  // populate split panel after render
+  if(ST.splitRow) setTimeout(()=>{const el=document.getElementById('split-panel');if(el)el.innerHTML=buildSplitHTML();},10);
 }
 
 function selectPair(pair){
