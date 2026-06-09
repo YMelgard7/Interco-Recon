@@ -1867,8 +1867,7 @@ function renderRaw(){
     </div>
   </div>`:''}
   `;
-  // populate split panel after render
-  if(ST.splitRow) setTimeout(()=>{const el=document.getElementById('split-panel');if(el)el.innerHTML=buildSplitHTML();},10);
+
 }
 
 function selectPair(pair){
@@ -2453,42 +2452,42 @@ const SPLIT_AB    = ['','Payroll','Management Fee','Expense Reimbursement','Corp
 
 function openSplit(rowId){
   const row = ST.rows.find(r=>r.id===rowId);
-  if(!row) return;
+  if(!row){ console.error('Row not found:', rowId); return; }
   const total = parseFloat(row.amount)||0;
   ST.splitRow = row;
   ST.splitPieces = [
     {amount: total, invoice_item: row.invoice_item||'', column1: row.column1||''},
     {amount: 0,     invoice_item: '',                    column1: ''},
   ];
-  render();
-  setTimeout(()=>{
-    const el=document.getElementById('split-panel');
-    if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
-  },60);
+  // Directly update the split panel without full re-render
+  let panel = document.getElementById('split-panel');
+  if(!panel){
+    // panel doesn't exist yet — do a full render then populate
+    render();
+    setTimeout(()=>{
+      panel = document.getElementById('split-panel');
+      if(panel){
+        panel.className = 'card';
+        panel.style.cssText = 'margin-top:1rem;border:1.5px solid #2563eb';
+        panel.innerHTML = buildSplitHTML();
+        panel.scrollIntoView({behavior:'smooth',block:'center'});
+      }
+    }, 30);
+    return;
+  }
+  panel.className = 'card';
+  panel.style.cssText = 'margin-top:1rem;border:1.5px solid #2563eb';
+  panel.innerHTML = buildSplitHTML();
+  panel.scrollIntoView({behavior:'smooth',block:'center'});
 }
 
 function closeSplit(){
   ST.splitRow=null; ST.splitPieces=[];
-  render();
+  const panel = document.getElementById('split-panel');
+  if(panel){ panel.className=''; panel.style.cssText=''; panel.innerHTML=''; }
 }
 
-function updateSplitPiece(idx, field, val){
-  const pieces = ST.splitPieces.map(p=>({...p}));
-  if(field==='amount'){
-    const v = parseFloat(val)||0;
-    pieces[idx].amount = v;
-    // auto-adjust last piece to keep sum = total
-    const total = parseFloat(ST.splitRow.amount)||0;
-    const sumOthers = pieces.reduce((s,p,i)=>i===pieces.length-1?s:s+(parseFloat(p.amount)||0), 0);
-    if(idx!==pieces.length-1){
-      pieces[pieces.length-1].amount = Math.round((total - sumOthers)*100)/100;
-    }
-  } else {
-    pieces[idx][field] = val;
-  }
-  ST.splitPieces = pieces;
-  renderSplitPanel();
-}
+
 
 function addSplitPiece(){
   const pieces = ST.splitPieces.map(p=>({...p}));
@@ -2514,6 +2513,25 @@ function renderSplitPanel(){
   const panel = document.getElementById('split-panel');
   if(!panel || !ST.splitRow) return;
   panel.innerHTML = buildSplitHTML();
+}
+function updateSplitPiece(idx, field, val){
+  const pieces = ST.splitPieces.map(p=>({...p}));
+  if(field==='amount'){
+    const v = parseFloat(val)||0;
+    pieces[idx].amount = v;
+    const total = parseFloat(ST.splitRow.amount)||0;
+    const sumOthers = pieces.reduce((s,p,i)=>i===pieces.length-1?s:s+(parseFloat(p.amount)||0), 0);
+    if(idx!==pieces.length-1){
+      pieces[pieces.length-1].amount = Math.round((total - sumOthers)*100)/100;
+      // update last piece amount input directly
+      const lastInp = document.querySelector('#split-panel input[type=number]:last-of-type');
+      if(lastInp) lastInp.value = pieces[pieces.length-1].amount;
+    }
+  } else {
+    pieces[idx][field] = val;
+  }
+  ST.splitPieces = pieces;
+  renderSplitPanel();
 }
 
 function buildSplitHTML(){
