@@ -2535,79 +2535,69 @@ function updateSplitPiece(idx, field, val){
 }
 
 function buildSplitHTML(){
+  if(!ST.splitRow) return '';
   const row   = ST.splitRow;
-  const total = parseFloat(row.amount)||0;
   const pieces= ST.splitPieces;
-  const sum   = pieces.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
-  const diff  = Math.round((total - sum)*100)/100;
-  const balanced = Math.abs(diff) < 0.01;
-  const fmt2  = v=>'$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const itemOpts  = SPLIT_ITEMS.map(o=>`<option value="${esc(o)}">${o||'— Invoice Tagging —'}</option>`).join('');
-  const stmtOpts  = SPLIT_AB.map(o=>`<option value="${esc(o)}">${o||'— Stmt Tagging —'}</option>`).join('');
+  const total = parseFloat(row.amount)||0;
+  const sum   = pieces.reduce(function(s,p){return s+(parseFloat(p.amount)||0);},0);
+  const diff  = Math.round((total-sum)*100)/100;
+  const ok    = Math.abs(diff)<0.01;
+  const fmt2  = function(v){return '$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
 
-  return`
-  <div style="padding:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:13px;font-weight:600">Split transaction</div>
-        <div style="font-size:11px;color:#666;margin-top:2px">
-          ${esc(row.pair_key)} · ${esc(row.period)} · ${esc(row.description)} · Original: <strong>${fmt2(total)}</strong>
-        </div>
-      </div>
-      <button class="btn" onclick="closeSplit()">✕ Cancel</button>
-    </div>
+  var piecesHTML = '';
+  for(var pi=0;pi<pieces.length;pi++){
+    var p=pieces[pi];
+    var bg  = pi===0?'#f0fdf4':'#eff6ff';
+    var bdr = pi===0?'#86efac':'#bfdbfe';
+    var lbl = pi===0?'(primary)':'(split '+pi+')';
 
-    <!-- Pieces -->
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-      ${pieces.map((p,i)=>`
-      <div style="display:grid;grid-template-columns:130px 1fr 1fr 32px;gap:8px;align-items:center;padding:10px 12px;background:${i===0?'#f0fdf4':'#eff6ff'};border-radius:8px;border:0.5px solid ${i===0?'#86efac':'#bfdbfe'}">
-        <div>
-          <div style="font-size:10px;color:#666;margin-bottom:3px">Amount ${i===0?'(primary)':'(split '+i+')'}</div>
-          <input type="number" step="0.01" value="${parseFloat(p.amount)||0}"
-            style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4;font-variant-numeric:tabular-nums"
-            oninput="updateSplitPiece(${i},'amount',this.value)">
-        </div>
-        <div>
-          <div style="font-size:10px;color:#666;margin-bottom:3px">AC Invoice Tagging</div>
-          <select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"
-            onchange="updateSplitPiece(${i},'invoice_item',this.value)">
-            ${SPLIT_ITEMS.map(o=>`<option value="${esc(o)}" ${p.invoice_item===o?'selected':''}>${o||'(none)'}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <div style="font-size:10px;color:#666;margin-bottom:3px">AB Entity Stmt Tagging</div>
-          <select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"
-            onchange="updateSplitPiece(${i},'column1',this.value)">
-            ${SPLIT_AB.map(o=>`<option value="${esc(o)}" ${p.column1===o?'selected':''}>${o||'(none)'}</option>`).join('')}
-          </select>
-        </div>
-        <div style="text-align:center">
-          ${pieces.length>2?`<button class="btn" style="font-size:13px;padding:3px 7px;color:#dc2626;border-color:#fca5a5" onclick="removeSplitPiece(${i})">✕</button>`:'<div></div>'}
-        </div>
-      </div>`).join('')}
-    </div>
+    var invOpts='';
+    for(var oi=0;oi<SPLIT_ITEMS.length;oi++){
+      var o=SPLIT_ITEMS[oi];
+      invOpts+='<option value="'+esc(o)+'"'+(p.invoice_item===o?' selected':'')+'>'+(o||'(none)')+'</option>';
+    }
+    var stmtOpts='';
+    for(var si=0;si<SPLIT_AB.length;si++){
+      var s2=SPLIT_AB[si];
+      stmtOpts+='<option value="'+esc(s2)+'"'+(p.column1===s2?' selected':'')+'>'+(s2||'(none)')+'</option>';
+    }
+    var removeBtn = pieces.length>2
+      ? '<button class="btn" style="font-size:13px;padding:3px 7px;color:#dc2626;border-color:#fca5a5" onclick="removeSplitPiece('+pi+')">&#10005;</button>'
+      : '<div></div>';
 
-    <!-- Balance check -->
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:8px 12px;border-radius:8px;background:${balanced?'#f0fdf4':'#fef2f2'};border:0.5px solid ${balanced?'#86efac':'#fca5a5'}">
-      <span style="font-size:12px;font-weight:500;color:${balanced?'#16a34a':'#dc2626'}">
-        ${balanced?'✓ Balanced':'⚠ Off by '+fmt2(Math.abs(diff))+' — pieces must sum to '+fmt2(total)}
-      </span>
-      <span style="font-size:11px;color:#666;margin-left:auto">
-        Sum: ${fmt2(sum)} / Total: ${fmt2(total)}
-      </span>
-    </div>
+    piecesHTML += '<div style="display:grid;grid-template-columns:130px 1fr 1fr 32px;gap:8px;align-items:center;padding:10px 12px;background:'+bg+';border-radius:8px;border:0.5px solid '+bdr+'">'
+      +'<div><div style="font-size:10px;color:#666;margin-bottom:3px">Amount '+lbl+'</div>'
+      +'<input type="number" step="0.01" value="'+(parseFloat(p.amount)||0)+'"'
+      +' style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"'
+      +' oninput="updateSplitPiece('+pi+','amount',this.value)"></div>'
+      +'<div><div style="font-size:10px;color:#666;margin-bottom:3px">AC Invoice Tagging</div>'
+      +'<select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"'
+      +' onchange="updateSplitPiece('+pi+','invoice_item',this.value)">'+invOpts+'</select></div>'
+      +'<div><div style="font-size:10px;color:#666;margin-bottom:3px">AB Stmt Tagging</div>'
+      +'<select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"'
+      +' onchange="updateSplitPiece('+pi+','column1',this.value)">'+stmtOpts+'</select></div>'
+      +removeBtn+'</div>';
+  }
 
-    <!-- Actions -->
-    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
-      <button class="btn" style="font-size:11px" onclick="addSplitPiece()">+ Add piece</button>
-      <div style="display:flex;gap:8px">
-        <button class="btn" onclick="closeSplit()">Cancel</button>
-        <button class="btn-dark" onclick="saveSplit()" ${!balanced?'disabled style="opacity:.5"':''}>
-          Save split (${pieces.length} pieces)
-        </button>
-      </div>
-    </div>
-  </div>`;
+  var balBar = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:8px 12px;border-radius:8px;background:'+(ok?'#f0fdf4':'#fef2f2')+';border:0.5px solid '+(ok?'#86efac':'#fca5a5')+'">'
+    +'<span style="font-size:12px;font-weight:500;color:'+(ok?'#16a34a':'#dc2626')+'">'
+    +(ok?'&#10003; Balanced':'&#9888; Off by '+fmt2(Math.abs(diff))+' &mdash; must sum to '+fmt2(total))+'</span>'
+    +'<span style="font-size:11px;color:#666;margin-left:auto">Sum: '+fmt2(sum)+' / Total: '+fmt2(total)+'</span></div>';
+
+  var saveDisabled = ok?'':'disabled';
+  return '<div style="padding:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">'
+    +'<div><div style="font-size:13px;font-weight:600">Split transaction</div>'
+    +'<div style="font-size:11px;color:#666;margin-top:2px">'+esc(row.pair_key)+' &bull; '+esc(row.period)+' &bull; '+esc(row.description)+' &bull; Original: <strong>'+fmt2(total)+'</strong></div></div>'
+    +'<button class="btn" onclick="closeSplit()">&#10005; Cancel</button></div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+piecesHTML+'</div>'
+    +balBar
+    +'<div style="display:flex;gap:8px;justify-content:space-between;align-items:center">'
+    +'<button class="btn" style="font-size:11px" onclick="addSplitPiece()">+ Add piece</button>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn" onclick="closeSplit()">Cancel</button>'
+    +'<button class="btn-dark" onclick="saveSplit()" '+saveDisabled+(ok?'':' style="opacity:.5"')+'>'
+    +'Save split ('+pieces.length+' pieces)</button></div></div></div>';
 }
 
 async function saveSplit(){
