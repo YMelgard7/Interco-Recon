@@ -1856,7 +1856,7 @@ function renderRaw(){
       </tbody>
     </table></div>
   </div>
-  ${ST.rawFullscreen?'</div></div>':''}
+  ${ST.rawFullscreen?'<div id="split-panel-fs"></div></div></div>':''}
   <div id="split-panel" class="${ST.splitRow?'card':''}" style="${ST.splitRow?'margin-top:1rem;border:1.5px solid #2563eb':''}"></div>
   ${!ST.rawFullscreen?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
     <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period frozen</p>
@@ -2459,32 +2459,34 @@ function openSplit(rowId){
     {amount: total, invoice_item: row.invoice_item||'', column1: row.column1||''},
     {amount: 0,     invoice_item: '',                    column1: ''},
   ];
-  // Directly update the split panel without full re-render
-  let panel = document.getElementById('split-panel');
-  if(!panel){
-    // panel doesn't exist yet — do a full render then populate
-    render();
-    setTimeout(()=>{
-      panel = document.getElementById('split-panel');
-      if(panel){
-        panel.className = 'card';
-        panel.style.cssText = 'margin-top:1rem;border:1.5px solid #2563eb';
-        panel.innerHTML = buildSplitHTML();
-        panel.scrollIntoView({behavior:'smooth',block:'center'});
-      }
-    }, 30);
-    return;
+  showSplitPanel();
+}
+
+function getSplitPanel(){
+  // In fullscreen use the inner panel, otherwise the outer one
+  return document.getElementById('split-panel-fs') || document.getElementById('split-panel');
+}
+
+function showSplitPanel(){
+  const panel = getSplitPanel();
+  if(!panel) return;
+  const isFS = panel.id === 'split-panel-fs';
+  if(isFS){
+    panel.style.cssText = 'border-top:2px solid #2563eb;background:#fff;padding:0;overflow-y:auto;max-height:60vh;flex-shrink:0';
+  } else {
+    panel.className = 'card';
+    panel.style.cssText = 'margin-top:1rem;border:1.5px solid #2563eb';
   }
-  panel.className = 'card';
-  panel.style.cssText = 'margin-top:1rem;border:1.5px solid #2563eb';
   panel.innerHTML = buildSplitHTML();
-  panel.scrollIntoView({behavior:'smooth',block:'center'});
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function closeSplit(){
   ST.splitRow=null; ST.splitPieces=[];
-  const panel = document.getElementById('split-panel');
-  if(panel){ panel.className=''; panel.style.cssText=''; panel.innerHTML=''; }
+  ['split-panel','split-panel-fs'].forEach(id=>{
+    const panel=document.getElementById(id);
+    if(panel){ panel.className=''; panel.style.cssText=''; panel.innerHTML=''; }
+  });
 }
 
 
@@ -2510,7 +2512,7 @@ function removeSplitPiece(idx){
 }
 
 function renderSplitPanel(){
-  const panel = document.getElementById('split-panel');
+  const panel = getSplitPanel ? getSplitPanel() : document.getElementById('split-panel');
   if(!panel || !ST.splitRow) return;
   panel.innerHTML = buildSplitHTML();
 }
