@@ -155,7 +155,7 @@ const ST={
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,stmtPeriods:[],settlementView:'all',settlementEntity:null,settingsView:false,customCols:[],jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
-  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:{},rawActiveRow:null,rawShowUntagged:false,rawFullscreen:false,
+  rawSearch:'',rawPair:'',rawPeriod:'',rawInclude:'',rawPage:0,rawColFilters:{},rawSelected:{},rawActiveRow:null,rawShowUntagged:false,rawFullscreen:false,splitRow:null,splitPieces:[],
   editingCell:null,
   modal:null,
   uploadStatus:null,uploadMsg:'',uploadProgress:0,
@@ -1791,6 +1791,7 @@ function renderRaw(){
     <div class="${ST.rawFullscreen?'':'scroll-x scroll-y'}" style="${ST.rawFullscreen?'flex:1;overflow:auto;':''}"><table style="table-layout:fixed;min-width:2600px">
       <colgroup>
         <col style="width:36px">
+        <col style="width:60px">
         <col style="width:165px">
         <col style="width:90px">
         ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<col style="width:${['memo','memo2','subsidiary','account'].includes(c.key)?'220px':'120px'}">`).join('')}
@@ -1802,22 +1803,23 @@ function renderRaw(){
           <th style="width:32px;background:#f5f5f3;position:sticky;left:0;z-index:3">
             <input type="checkbox" ${allSelected?'checked':''} onchange="toggleSelectAllVisible()" title="Select all on page">
           </th>
-          <th style="min-width:160px;position:sticky;left:32px;z-index:3;background:#fafafa">Pair Key</th>
-          <th style="min-width:80px;position:sticky;left:192px;z-index:3;background:#fafafa">Period</th>
+          <th style="width:60px;background:#f5f5f3;position:sticky;left:32px;z-index:3;font-size:10px;color:#888">Split</th>
+          <th style="min-width:160px;position:sticky;left:92px;z-index:3;background:#fafafa">Pair Key</th>
+          <th style="min-width:80px;position:sticky;left:252px;z-index:3;background:#fafafa">Period</th>
           ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<th style="background:#f5f5f3;color:#888">${c.label}</th>`).join('')}
           ${EDITABLE_COLS.map(c=>`<th style="background:#f0fdf4;color:#166534;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${c.label}</th>`).join('')}
         </tr>
         <!-- Column filter row -->
         <tr style="position:sticky;top:28px;z-index:2">
           <th style="background:#f5f5f3;position:sticky;left:0;z-index:3"></th>
-          <th style="position:sticky;left:32px;z-index:3;background:#f5f5f3;padding:3px 4px">
+          <th style="position:sticky;left:92px;z-index:3;background:#f5f5f3;padding:3px 4px">
             <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
               onchange="ST.rawPair=this.value;ST.rawPage=0;render()">
               <option value="">All</option>
               ${pairs.map(p=>`<option value="${esc(p)}" ${ST.rawPair===p?'selected':''}>${esc(p)}</option>`).join('')}
             </select>
           </th>
-          <th style="position:sticky;left:192px;z-index:3;background:#f5f5f3;padding:3px 4px">
+          <th style="position:sticky;left:252px;z-index:3;background:#f5f5f3;padding:3px 4px">
             <select style="font-size:10px;padding:2px 3px;border-radius:4px;border:0.5px solid #d4d4d4;background:#fff;color:#111;width:100%"
               onchange="ST.rawPeriod=this.value;ST.rawPage=0;render()">
               <option value="">All</option>
@@ -1833,13 +1835,18 @@ function renderRaw(){
           const isActive=ST.rawActiveRow===r.id;
           const isSelected=!!ST.rawSelected[r.id];
           const rowBg=isSelected?'#eff6ff':isActive?'#fefce8':'transparent';
-          return`<tr id="raw-row-${r.id}" style="background:${rowBg};cursor:default" onclick="if(!event.target.closest('input,select,span[onclick]')){ST.rawActiveRow='${r.id}';render();}">
+          return`<tr id="raw-row-${r.id}" style="background:${rowBg};cursor:default" onclick="if(!event.target.closest('input,select,span[onclick],button')){ST.rawActiveRow='${r.id}';render();}">
             <td style="position:sticky;left:0;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:4px">
               <input type="checkbox" ${isSelected?'checked':''} 
                 onclick="event.stopPropagation();toggleRowSelect('${r.id}')">
             </td>
-            <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
-            <td style="position:sticky;left:192px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-size:11px">${esc(r.period)}</td>
+            <td style="position:sticky;left:32px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};text-align:center;padding:3px">
+              <button class="btn" style="font-size:10px;padding:2px 6px;white-space:nowrap" onclick="event.stopPropagation();openSplit('${r.id}')" title="Split this transaction">
+                ${r.split_from?'↳ Split':'⚡ Split'}
+              </button>
+            </td>
+            <td style="position:sticky;left:92px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-weight:500;min-width:160px;font-size:11px">${esc(r.pair_key)}</td>
+            <td style="position:sticky;left:252px;z-index:2;background:${isSelected?'#dbeafe':isActive?'#fef9c3':'#fff'};font-size:11px">${esc(r.period)}</td>
             ${READONLY_COLS.filter(c=>c.key!=='pair_key'&&c.key!=='period').map(c=>`<td class="muted raw-td" title="${esc(String(r[c.key]||''))}" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r[c.key])}</td>`).join('')}
             ${EDITABLE_COLS.map(c=>`<td class="raw-td" style="min-width:80px;border-left:${c===EDITABLE_COLS[0]?'2px solid #86efac':'none'}">${editableCell(r,c.key,r[c.key])}</td>`).join('')}
           </tr>`;
@@ -1849,6 +1856,7 @@ function renderRaw(){
     </table></div>
   </div>
   ${ST.rawFullscreen?'</div></div>':''}
+  ${ST.splitRow?`<div id="split-panel" class="card" style="margin-top:1rem;border:1.5px solid #2563eb">${buildSplitHTML()}</div>`:'<div id="split-panel"></div>'}
   ${!ST.rawFullscreen?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
     <p style="font-size:11px;color:#888">Tab / Shift+Tab → next/prev cell · Enter / ↓ → row below · ↑ → row above · Pair Key & Period frozen</p>
     <div style="display:flex;gap:6px">
@@ -2433,6 +2441,209 @@ function renderSettings(){
       </div>
     </div>
   </div>`;
+}
+
+
+// ── SPLIT TRANSACTION ─────────────────────────────────────────────────────
+const SPLIT_ITEMS = ['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments','IC Settlement'];
+const SPLIT_AB    = ['','Payroll','Management Fee','Expense Reimbursement','Corporate Expense Allocation','Labor Expense Allocation','Vendor Bill Allocation','Misrouted Payments','IC Settlement'];
+
+function openSplit(rowId){
+  const row = ST.rows.find(r=>r.id===rowId);
+  if(!row) return;
+  const total = parseFloat(row.amount)||0;
+  ST.splitRow = row;
+  ST.splitPieces = [
+    {amount: total, invoice_item: row.invoice_item||'', column1: row.column1||''},
+    {amount: 0,     invoice_item: '',                    column1: ''},
+  ];
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById('split-panel');
+    if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+  },60);
+}
+
+function closeSplit(){
+  ST.splitRow=null; ST.splitPieces=[];
+  render();
+}
+
+function updateSplitPiece(idx, field, val){
+  const pieces = ST.splitPieces.map(p=>({...p}));
+  if(field==='amount'){
+    const v = parseFloat(val)||0;
+    pieces[idx].amount = v;
+    // auto-adjust last piece to keep sum = total
+    const total = parseFloat(ST.splitRow.amount)||0;
+    const sumOthers = pieces.reduce((s,p,i)=>i===pieces.length-1?s:s+(parseFloat(p.amount)||0), 0);
+    if(idx!==pieces.length-1){
+      pieces[pieces.length-1].amount = Math.round((total - sumOthers)*100)/100;
+    }
+  } else {
+    pieces[idx][field] = val;
+  }
+  ST.splitPieces = pieces;
+  renderSplitPanel();
+}
+
+function addSplitPiece(){
+  const pieces = ST.splitPieces.map(p=>({...p}));
+  const total = parseFloat(ST.splitRow.amount)||0;
+  const used  = pieces.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  pieces.push({amount: Math.max(0, Math.round((total-used)*100)/100), invoice_item:'', column1:''});
+  ST.splitPieces = pieces;
+  renderSplitPanel();
+}
+
+function removeSplitPiece(idx){
+  if(ST.splitPieces.length<=2){ alert('Minimum 2 pieces for a split.'); return; }
+  const pieces = ST.splitPieces.filter((_,i)=>i!==idx);
+  // rebalance last piece
+  const total = parseFloat(ST.splitRow.amount)||0;
+  const sum   = pieces.slice(0,-1).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  pieces[pieces.length-1].amount = Math.round((total-sum)*100)/100;
+  ST.splitPieces = pieces;
+  renderSplitPanel();
+}
+
+function renderSplitPanel(){
+  const panel = document.getElementById('split-panel');
+  if(!panel || !ST.splitRow) return;
+  panel.innerHTML = buildSplitHTML();
+}
+
+function buildSplitHTML(){
+  const row   = ST.splitRow;
+  const total = parseFloat(row.amount)||0;
+  const pieces= ST.splitPieces;
+  const sum   = pieces.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  const diff  = Math.round((total - sum)*100)/100;
+  const balanced = Math.abs(diff) < 0.01;
+  const fmt2  = v=>'$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const itemOpts  = SPLIT_ITEMS.map(o=>`<option value="${esc(o)}">${o||'— Invoice Tagging —'}</option>`).join('');
+  const stmtOpts  = SPLIT_AB.map(o=>`<option value="${esc(o)}">${o||'— Stmt Tagging —'}</option>`).join('');
+
+  return`
+  <div style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:13px;font-weight:600">Split transaction</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">
+          ${esc(row.pair_key)} · ${esc(row.period)} · ${esc(row.description)} · Original: <strong>${fmt2(total)}</strong>
+        </div>
+      </div>
+      <button class="btn" onclick="closeSplit()">✕ Cancel</button>
+    </div>
+
+    <!-- Pieces -->
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      ${pieces.map((p,i)=>`
+      <div style="display:grid;grid-template-columns:130px 1fr 1fr 32px;gap:8px;align-items:center;padding:10px 12px;background:${i===0?'#f0fdf4':'#eff6ff'};border-radius:8px;border:0.5px solid ${i===0?'#86efac':'#bfdbfe'}">
+        <div>
+          <div style="font-size:10px;color:#666;margin-bottom:3px">Amount ${i===0?'(primary)':'(split '+i+')'}</div>
+          <input type="number" step="0.01" value="${parseFloat(p.amount)||0}"
+            style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4;font-variant-numeric:tabular-nums"
+            oninput="updateSplitPiece(${i},'amount',this.value)">
+        </div>
+        <div>
+          <div style="font-size:10px;color:#666;margin-bottom:3px">AC Invoice Tagging</div>
+          <select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"
+            onchange="updateSplitPiece(${i},'invoice_item',this.value)">
+            ${SPLIT_ITEMS.map(o=>`<option value="${esc(o)}" ${p.invoice_item===o?'selected':''}>${o||'(none)'}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#666;margin-bottom:3px">AB Entity Stmt Tagging</div>
+          <select style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:0.5px solid #d4d4d4"
+            onchange="updateSplitPiece(${i},'column1',this.value)">
+            ${SPLIT_AB.map(o=>`<option value="${esc(o)}" ${p.column1===o?'selected':''}>${o||'(none)'}</option>`).join('')}
+          </select>
+        </div>
+        <div style="text-align:center">
+          ${pieces.length>2?`<button class="btn" style="font-size:13px;padding:3px 7px;color:#dc2626;border-color:#fca5a5" onclick="removeSplitPiece(${i})">✕</button>`:'<div></div>'}
+        </div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Balance check -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:8px 12px;border-radius:8px;background:${balanced?'#f0fdf4':'#fef2f2'};border:0.5px solid ${balanced?'#86efac':'#fca5a5'}">
+      <span style="font-size:12px;font-weight:500;color:${balanced?'#16a34a':'#dc2626'}">
+        ${balanced?'✓ Balanced':'⚠ Off by '+fmt2(Math.abs(diff))+' — pieces must sum to '+fmt2(total)}
+      </span>
+      <span style="font-size:11px;color:#666;margin-left:auto">
+        Sum: ${fmt2(sum)} / Total: ${fmt2(total)}
+      </span>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+      <button class="btn" style="font-size:11px" onclick="addSplitPiece()">+ Add piece</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="closeSplit()">Cancel</button>
+        <button class="btn-dark" onclick="saveSplit()" ${!balanced?'disabled style="opacity:.5"':''}>
+          Save split (${pieces.length} pieces)
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function saveSplit(){
+  const row    = ST.splitRow;
+  const pieces = ST.splitPieces;
+  const total  = parseFloat(row.amount)||0;
+  const sum    = pieces.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  if(Math.abs(total-sum)>0.01){ alert('Pieces must sum to original amount.'); return; }
+  if(pieces.some(p=>parseFloat(p.amount)<=0)){ alert('Each piece must have an amount greater than zero.'); return; }
+
+  // Update the original row with piece[0] values
+  const p0 = pieces[0];
+  row.amount       = parseFloat(p0.amount);
+  row.invoice_item = p0.invoice_item;
+  row.column1      = p0.column1;
+  row.edited_by    = 'team';
+  row.edited_at    = new Date().toISOString();
+  row.is_split     = true;
+  await api.patch('transactions',`id=eq.${row.id}`,{
+    amount:       row.amount,
+    invoice_item: row.invoice_item,
+    column1:      row.column1,
+    edited_by:    'team',
+    edited_at:    row.edited_at,
+  });
+
+  // Insert new rows for pieces 1..N
+  const newRows = pieces.slice(1).map(p=>({
+    upload_id:         row.upload_id,
+    pair_key:          row.pair_key,
+    sub_name:          row.sub_name,
+    relationship:      row.relationship,
+    amount:            parseFloat(p.amount),
+    amount_functional: parseFloat(p.amount),
+    currency:          row.currency,
+    period:            row.period,
+    description:       row.description,
+    who_owes_who:      row.who_owes_who,
+    doc_number:        row.doc_number,
+    memo:              row.memo,
+    invoice_item:      p.invoice_item,
+    column1:           p.column1,
+    include_exclude:   row.include_exclude||'Include',
+    edited_by:         'team',
+    edited_at:         new Date().toISOString(),
+    split_from:        row.id,          // link to parent
+  }));
+
+  const inserted = await api.post('transactions', newRows);
+
+  // Add new rows to ST.rows
+  if(Array.isArray(inserted)) ST.rows.push(...inserted);
+  else if(inserted) ST.rows.push(inserted);
+
+  ST.splitRow=null; ST.splitPieces=[];
+  aggregate(ST.rows);
+  render();
 }
 
 
