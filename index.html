@@ -89,14 +89,14 @@ const H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'ap
 const api={
   get:async(t,p='')=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{headers:{...H,'Range-Unit':'items','Range':'0-9999'}});if(!r.ok)throw new Error(await r.text());return r.json()},
   getAll:async(t,filter='')=>{
-    // paginate in batches of 1000 to bypass Supabase default limit
-    let all=[],from=0,batchSize=1000;
-    while(true){
+    let all=[],from=0,batchSize=1000,maxBatches=50;
+    while(maxBatches-->0){
       const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${filter}&order=period.asc`,{
         headers:{...H,'Range-Unit':'items','Range':`${from}-${from+batchSize-1}`,'Prefer':'count=exact'}
       });
       if(!r.ok)throw new Error(await r.text());
       const batch=await r.json();
+      if(!Array.isArray(batch))throw new Error('Unexpected response format');
       all=[...all,...batch];
       if(batch.length<batchSize)break;
       from+=batchSize;
@@ -108,12 +108,12 @@ const api={
   del:async(t,p)=>{const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text())}
 };
 
-const fmt=v=>'$'+Math.abs(Number(v)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt=v=>{const n=Number(v);return '$'+(isNaN(n)?0:Math.abs(n)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
 const fmtD=v=>{if(Math.abs(v)<0.02)return'<span class="ok">—</span>';return`<span class="warn">${v>0?'+':'-'}${fmt(v)}</span>`;};
 const isAR=r=>r.relationship&&(r.relationship.includes('A/R')||r.relationship.toLowerCase().includes('due from'));
 const PORD=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const sortP=(a,b)=>{const[am,ay]=a.split(' '),[bm,by]=b.split(' ');return ay!==by?Number(ay)-Number(by):PORD.indexOf(am)-PORD.indexOf(bm);};
-const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const sortP=(a,b)=>{const[am='',ay='0']=String(a||'').split(' '),[bm='',by='0']=String(b||'').split(' ');return ay!==by?Number(ay)-Number(by):PORD.indexOf(am)-PORD.indexOf(bm);};
+const esc=s=>{try{return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}catch(e){return '';}};
 
 // A-P = read-only (cols 1-16), Q-AB = editable (cols 17-28)
 const READONLY_COLS=[
@@ -163,6 +163,7 @@ const ST={
 const PAGE_SIZE=100;
 
 function aggregate(rows){
+  if(!rows||!rows.length){ST.pairs=[];ST.periods=[];return;}
   const map={};
   rows.filter(r=>!r.include_exclude||r.include_exclude==='Include').forEach(r=>{
     const pair=r.pair_key||'';if(!pair)return;
@@ -358,7 +359,13 @@ async function commitEdit(id,field){
   if(String(row[field]||'')==String(newVal)){ST.editingCell=null;render();return;}
   // update local row immediately
   row[field]=newVal;row.edited_by='team';row.edited_at=new Date().toISOString();
-  await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:'team',edited_at:row.edited_at});
+  try{
+    await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:'team',edited_at:row.edited_at});
+  }catch(err){
+    console.error('Edit failed:',err.message);
+    // revert local change
+    row[field]=String(row[field]||'')===String(newVal)?row[field]:newVal;
+  }
   ST.editingCell=null;
   aggregate(ST.rows);
   render();
@@ -1488,34 +1495,36 @@ async function autoTagByDescription(){
   const toUpdate = rows.filter(r => DESC_AUTO_MAP[r.description] && !r.invoice_item);
   if(!toUpdate.length){ alert('No untagged rows with auto-mappable descriptions found in current filter.'); return; }
   if(!confirm(`Auto-tag ${toUpdate.length} rows based on their Description field?`)) return;
-  // batch update
-  for(const r of toUpdate){
-    const item = DESC_AUTO_MAP[r.description];
-    r.invoice_item = item; r.edited_by='team'; r.edited_at=new Date().toISOString();
-    await api.patch('transactions',`id=eq.${r.id}`,{invoice_item:item,edited_by:'team',edited_at:r.edited_at});
-  }
-  aggregate(ST.rows);
-  render();
+  try{
+    for(const r of toUpdate){
+      const item = DESC_AUTO_MAP[r.description];
+      r.invoice_item = item; r.edited_by='team'; r.edited_at=new Date().toISOString();
+      await api.patch('transactions',`id=eq.${r.id}`,{invoice_item:item,edited_by:'team',edited_at:r.edited_at});
+    }
+    aggregate(ST.rows);
+    render();
+  }catch(err){ alert('Auto-tag failed: '+err.message); }
 }
 
 async function applyBulkField(field, value){
-  // if free-text field, read from text input instead
   if(field==='who_owes_who'){
     const inp=document.getElementById('bulk-val-text');
     if(inp) value=inp.value;
   }
   const selected = Object.keys(ST.rawSelected);
   if(!selected.length){ alert('No rows selected. Check boxes on the left to select rows.'); return; }
-  if(!confirm(`Apply "${value}" to ${selected.length} selected rows?`)) return;
-  for(const id of selected){
-    const row = ST.rows.find(r=>r.id===id);
-    if(!row) continue;
-    row[field]=value; row.edited_by='team'; row.edited_at=new Date().toISOString();
-    await api.patch('transactions',`id=eq.${id}`,{[field]:value,edited_by:'team',edited_at:row.edited_at});
-  }
-  ST.rawSelected={};
-  aggregate(ST.rows);
-  render();
+  if(!confirm(`Apply "${value||'(clear)'}" to ${selected.length} selected rows?`)) return;
+  try{
+    for(const id of selected){
+      const row = ST.rows.find(r=>r.id===id);
+      if(!row) continue;
+      row[field]=value; row.edited_by='team'; row.edited_at=new Date().toISOString();
+      await api.patch('transactions',`id=eq.${id}`,{[field]:value,edited_by:'team',edited_at:row.edited_at});
+    }
+    ST.rawSelected={};
+    aggregate(ST.rows);
+    render();
+  }catch(err){ alert('Bulk update failed: '+err.message); ST.rawSelected={}; render(); }
 }
 
 function applyVisibleRows(){
@@ -1530,13 +1539,15 @@ function applyVisibleRows(){
 async function applyBulkToVisible(field, value){
   const rows = getRawFiltered();
   if(!rows.length){ alert('No rows in current filter.'); return; }
-  if(!confirm(`Apply "${value}" to all ${rows.length} visible rows?`)) return;
-  for(const r of rows){
-    r[field]=value; r.edited_by='team'; r.edited_at=new Date().toISOString();
-    await api.patch('transactions',`id=eq.${r.id}`,{[field]:value,edited_by:'team',edited_at:r.edited_at});
-  }
-  aggregate(ST.rows);
-  render();
+  if(!confirm(`Apply "${value||'(clear)'}" to all ${rows.length} visible rows?`)) return;
+  try{
+    for(const r of rows){
+      r[field]=value; r.edited_by='team'; r.edited_at=new Date().toISOString();
+      await api.patch('transactions',`id=eq.${r.id}`,{[field]:value,edited_by:'team',edited_at:r.edited_at});
+    }
+    aggregate(ST.rows);
+    render();
+  }catch(err){ alert('Bulk update failed: '+err.message); }
 }
 
 function updateBulkValOptions(){
@@ -1623,7 +1634,7 @@ function toggleSelectAllVisible(){
 }
 
 function getRawFiltered(){
-  let rows = ST.rows;
+  let rows = ST.rows||[];
   if(ST.rawPair)    rows=rows.filter(r=>r.pair_key===ST.rawPair);
   if(ST.rawPeriod)  rows=rows.filter(r=>r.period===ST.rawPeriod);
   if(ST.rawInclude) rows=rows.filter(r=>(r.include_exclude||'Include')===ST.rawInclude);
@@ -2488,6 +2499,7 @@ function closeSplit(){
 
 
 function addSplitPiece(){
+  if(!ST.splitRow||!ST.splitPieces) return;
   const pieces = ST.splitPieces.map(p=>({...p}));
   const total = parseFloat(ST.splitRow.amount)||0;
   const used  = pieces.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
@@ -2497,9 +2509,9 @@ function addSplitPiece(){
 }
 
 function removeSplitPiece(idx){
+  if(!ST.splitRow||!ST.splitPieces) return;
   if(ST.splitPieces.length<=2){ alert('Minimum 2 pieces for a split.'); return; }
   const pieces = ST.splitPieces.filter((_,i)=>i!==idx);
-  // rebalance last piece
   const total = parseFloat(ST.splitRow.amount)||0;
   const sum   = pieces.slice(0,-1).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
   pieces[pieces.length-1].amount = Math.round((total-sum)*100)/100;
@@ -2513,14 +2525,15 @@ function renderSplitPanel(){
   panel.innerHTML = buildSplitHTML();
 }
 function updateSplitPiece(idx, field, val){
+  if(!ST.splitRow||!ST.splitPieces) return;
   var pieces=ST.splitPieces.map(function(p){return Object.assign({},p);});
+  if(idx<0||idx>=pieces.length) return;
   if(field==='amount'){
     pieces[idx].amount=parseFloat(val)||0;
   } else {
     pieces[idx][field]=val;
   }
   ST.splitPieces=pieces;
-  // lightweight re-render — just rebuild the panel HTML
   renderSplitPanel();
 }
 
@@ -2656,6 +2669,7 @@ function autoFillLast(){
 
 
 async function saveSplit(){
+  if(!ST.splitRow||!ST.splitPieces||ST.splitPieces.length<2){ alert('Invalid split state.'); return; }
   const row    = ST.splitRow;
   const pieces = ST.splitPieces;
   const total  = parseFloat(row.amount)||0;
