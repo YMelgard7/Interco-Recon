@@ -1415,10 +1415,8 @@ function renderStatements(){
             <th style="min-width:80px">Period</th>
             <th style="min-width:180px">Description</th>
             <th style="min-width:70px">Side</th>
-            <th style="min-width:80px">Relationship</th>
             <th class="num" style="min-width:110px">Amount</th>
             <th style="min-width:50px">Curr</th>
-            <th class="num" style="min-width:50px;color:#888;font-weight:400">Lines</th>
             <th style="min-width:140px">Who Owes Who</th>
           </tr>
         </thead>
@@ -1436,10 +1434,8 @@ function renderStatements(){
                 ?'<span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AR</span>'
                 :'<span style="background:#dbeafe;color:#2563eb;font-size:10px;padding:2px 6px;border-radius:100px;font-weight:500">AP</span>'}
               </td>
-              <td style="font-size:11px;color:#666">${esc(r.relationship)}</td>
               <td class="num" style="font-weight:500">${fmt(r.amount)}</td>
               <td style="font-size:11px">${esc(r.currency)}</td>
-              <td class="num muted" style="font-size:11px">${r.count}</td>
               <td style="font-size:11px;color:#666">${esc(r.who_owes_who)}</td>
             </tr>`).join('')}
             <tr style="background:#f9fafb;border-top:0.5px solid #d4d4d4">
