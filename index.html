@@ -72,6 +72,9 @@ textarea{font-size:12px;padding:7px 9px;border-radius:7px;border:0.5px solid #d4
 .incl{color:#16a34a;font-size:11px;font-weight:500}
 .excl{color:#dc2626;font-size:11px;font-weight:500}
 .raw-td{cursor:default;transition:background .12s}
+.name-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:flex;align-items:center;justify-content:center;padding:1rem}
+.name-modal{background:#fff;border-radius:14px;padding:28px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+.name-badge{font-size:11px;padding:3px 10px;border-radius:100px;background:#f0fdf4;color:#16a34a;border:0.5px solid #86efac;cursor:pointer;font-weight:500}
 .raw-td:hover{background:#fffbeb;position:relative;z-index:4;border-radius:3px;box-shadow:0 2px 10px rgba(0,0,0,.1);white-space:normal;word-break:break-word;overflow:visible;min-width:180px}
 .raw-fullscreen{position:fixed;inset:0;z-index:200;background:#f5f5f3;display:flex;flex-direction:column;padding:0}
 .raw-fullscreen .raw-fs-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#fff;border-bottom:0.5px solid #e5e5e5;flex-shrink:0;flex-wrap:wrap;gap:8px}
@@ -151,7 +154,7 @@ const EDITABLE_COLS=[
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 const ST={
-  screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],
+  screen:'loading',uploads:[],current:null,rows:[],pairs:[],periods:[],userName:'',
   view:'hub',statusFilter:'all',search:'',
   selectedPair:null,txPeriod:'',txDesc:'',txSide:'',
   stmtEntity:null,stmtPeriods:[],settlementView:'all',settlementEntity:null,settingsView:false,customCols:[],jvSection:'start-to-jv',jvSelectedPair:null,invJV:null,invPeriod:null,invPreview:false,
@@ -328,11 +331,64 @@ async function loadUpload(upload){
   aggregate(ST.rows);
   ST.screen='dashboard';ST.view='hub';ST.selectedPair=null;ST.search='';ST.statusFilter='all';ST.rawPage=0;
   render();
+  if(!getUserName()) setTimeout(promptUserName, 400);
+}
+
+function getUserName(){
+  return ST.userName || localStorage.getItem('recon_username') || '';
+}
+function setUserName(name){
+  ST.userName = name.trim();
+  if(ST.userName) localStorage.setItem('recon_username', ST.userName);
+}
+function renderNameModal(){
+  return `<div class="name-modal-overlay">
+    <div class="name-modal">
+      <div style="font-size:20px;margin-bottom:6px">👋 Welcome</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:4px">Interco Recon — Evolve2Impact</div>
+      <p style="font-size:13px;color:#666;margin-bottom:18px">Enter your name so your edits and tags are tracked in Supabase.</p>
+      <input id="name-input" type="text" placeholder="Your name e.g. Yary" autofocus
+        style="width:100%;font-size:14px;padding:9px 12px;border-radius:8px;border:1.5px solid #d4d4d4;margin-bottom:12px"
+        onkeydown="if(event.key==='Enter')confirmName()">
+      <button class="btn-dark" style="width:100%;padding:10px;font-size:13px;justify-content:center;display:flex" onclick="confirmName()">
+        Continue →
+      </button>
+      <p style="font-size:11px;color:#999;margin-top:10px;text-align:center">Saved in your browser — you won't be asked again on this device</p>
+    </div>
+  </div>`;
+}
+function confirmName(){
+  const inp = document.getElementById('name-input');
+  const name = inp?.value?.trim();
+  if(!name){ inp && inp.focus(); return; }
+  setUserName(name);
+  // remove modal
+  const overlay = document.querySelector('.name-modal-overlay');
+  if(overlay) overlay.remove();
+  // show badge in header
+  const badge = document.getElementById('user-badge');
+  if(badge) badge.innerHTML = renderUserBadge();
+}
+function renderUserBadge(){
+  const name = getUserName();
+  return name
+    ? `<span class="name-badge" onclick="changeUserName()" title="Click to change your name">&#128100; ${esc(name)}</span>`
+    : `<button class="btn" style="font-size:11px" onclick="promptUserName()">Set your name</button>`;
+}
+function promptUserName(){
+  document.getElementById('root').insertAdjacentHTML('beforeend', renderNameModal());
+  setTimeout(()=>document.getElementById('name-input')?.focus(), 50);
+}
+function changeUserName(){
+  ST.userName = '';
+  localStorage.removeItem('recon_username');
+  promptUserName();
 }
 
 async function init(){
   try{
     await loadCustomCols();
+    ST.userName = localStorage.getItem('recon_username')||'';
     ST.uploads=await api.get('uploads','order=created_at.desc');
     if(ST.uploads.length===0){ST.screen='upload';ST.uploadStatus=null;render();return;}
     await loadUpload(ST.uploads[0]);
@@ -358,9 +414,9 @@ async function commitEdit(id,field){
   const newVal=fdef?.type==='number'?parseFloat(val)||0:val;
   if(String(row[field]||'')==String(newVal)){ST.editingCell=null;render();return;}
   // update local row immediately
-  row[field]=newVal;row.edited_by='team';row.edited_at=new Date().toISOString();
+  row[field]=newVal;row.edited_by=getUserName()||'team';row.edited_at=new Date().toISOString();
   try{
-    await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:'team',edited_at:row.edited_at});
+    await api.patch('transactions',`id=eq.${id}`,{[field]:newVal,edited_by:getUserName()||'team',edited_at:row.edited_at});
   }catch(err){
     console.error('Edit failed:',err.message);
     // revert local change
@@ -416,7 +472,8 @@ function editableCell(row,field,val){
   } else if(field==='invoice_item'&&val){
     display=`<span style="font-size:10px;padding:2px 7px;border-radius:100px;background:#dbeafe;color:#1d4ed8;font-weight:500;white-space:nowrap">${esc(val)}</span>`;
   } else {
-    display=`<span class="editable-cell ${isEdited?'edited':''}" title="${esc(String(val||''))}">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
+    const editedBy = row.edited_by && row.edited_by!=='team' ? 'Edited by '+row.edited_by : isEdited ? 'Edited' : 'Click to edit';
+    display=`<span class="editable-cell ${isEdited?'edited':''}" title="${esc(editedBy)}">${esc(val)||'&nbsp;&nbsp;&nbsp;'}</span>`;
   }
   return`<span onclick="startEdit('${id}','${field}',event)">${display}</span>`;
 }
@@ -600,7 +657,8 @@ function renderDashboard(){
   <div class="header">
     <div><div style="font-size:18px;font-weight:500;margin-bottom:2px">Interco Recon</div>
     <div style="font-size:12px;color:#666">${esc(u?.file_name||'')} · ${ST.rows.length.toLocaleString()} rows · ${ST.pairs.length} pairs · ${ST.periods.join(', ')}</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span id="user-badge">${renderUserBadge()}</span>
       <div class="dropdown-wrap">
         <button class="btn-green" onclick="toggleDd('xl-dd')">⬇ Excel</button>
         <div class="dropdown-menu" id="xl-dd">
@@ -1499,7 +1557,7 @@ async function autoTagByDescription(){
     for(const r of toUpdate){
       const item = DESC_AUTO_MAP[r.description];
       r.invoice_item = item; r.edited_by='team'; r.edited_at=new Date().toISOString();
-      await api.patch('transactions',`id=eq.${r.id}`,{invoice_item:item,edited_by:'team',edited_at:r.edited_at});
+      await api.patch('transactions',`id=eq.${r.id}`,{invoice_item:item,edited_by:getUserName()||'team',edited_at:r.edited_at});
     }
     aggregate(ST.rows);
     render();
@@ -1518,7 +1576,7 @@ async function applyBulkField(field, value){
     for(const id of selected){
       const row = ST.rows.find(r=>r.id===id);
       if(!row) continue;
-      row[field]=value; row.edited_by='team'; row.edited_at=new Date().toISOString();
+      row[field]=value; row.edited_by=getUserName()||'team'; row.edited_at=new Date().toISOString();
       await api.patch('transactions',`id=eq.${id}`,{[field]:value,edited_by:'team',edited_at:row.edited_at});
     }
     ST.rawSelected={};
@@ -2710,7 +2768,7 @@ async function saveSplit(){
     invoice_item:      p.invoice_item,
     column1:           p.column1,
     include_exclude:   row.include_exclude||'Include',
-    edited_by:         'team',
+    edited_by:         getUserName()||'team',
     edited_at:         new Date().toISOString(),
     split_from:        row.id,          // link to parent
   }));
